@@ -51,11 +51,68 @@
   .btn { padding:8px 10px; border-radius:8px; border:none; cursor:pointer; }
   .btn.primary { background:var(--accent); color:#022; font-weight:700; }
   .btn.ghost { background:transparent; border:1px solid rgba(255,255,255,0.04); color:var(--muted); }
+  
+  /* About page styles */
+  #aboutPage {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(180deg, var(--bg), #071017);
+    z-index: 30;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  
+  #aboutPage.active {
+    display: flex;
+  }
+  
+  .about-card {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 400px;
+    width: 100%;
+    text-align: center;
+    border: 1px solid rgba(255,255,255,0.03);
+  }
+  
+  .about-title {
+    font-size: 24px;
+    margin-bottom: 20px;
+    color: var(--accent);
+  }
+  
+  .about-content {
+    font-size: 16px;
+    line-height: 1.5;
+    margin-bottom: 24px;
+  }
+  
+  .back-button {
+    background: var(--accent);
+    color: #012;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 700;
+    cursor: pointer;
+    width: 100%;
+  }
+  
   /* small screens */
   @media (max-width:420px){
     .avatar-small{width:36px;height:36px}
     .bubble img.msg-img{max-width:160px}
     header h1{font-size:15px}
+    .about-card {
+      padding: 20px;
+    }
   }
 </style>
 </head>
@@ -67,14 +124,14 @@
       </svg>
       <h1>Global Chat</h1>
     </div>
-    <div style="display:flex; gap:8px;">
-      <button id="profileBtn" class="btn ghost">Profile</button>
+    <div>
       <button id="aboutBtn" class="btn ghost">About</button>
+      <button id="profileBtn" class="btn ghost">Profile</button>
     </div>
   </header>
-
+  
   <main id="chat-wrap"></main>
-
+  
   <div class="composer">
     <div class="input">
       <input id="messageInput" type="text" placeholder="Type a message..." autocomplete="off" />
@@ -82,6 +139,18 @@
     <input id="fileInput" type="file" accept="image/*" style="display:none" />
     <button id="imgBtn" class="icon" title="Send image">📷</button>
     <button id="sendBtn" class="send">Send</button>
+  </div>
+
+  <!-- About page -->
+  <div id="aboutPage">
+    <div class="about-card">
+      <h2 class="about-title">About</h2>
+      <div class="about-content">
+        <p>OWNER: Hack7rBGG / Xymatekidd</p>
+        <p>This is a global chat application with user profiles and image sharing capabilities.</p>
+      </div>
+      <button id="backBtn" class="back-button">Back to Chat</button>
+    </div>
   </div>
 
   <!-- Profile modal -->
@@ -94,7 +163,6 @@
           <textarea id="bioField" class="field" rows="3" placeholder="Short bio (optional)"></textarea>
         </div>
       </div>
-
       <div style="margin-top:10px;">
         <label class="muted">Choose avatar (file) — will be visible to everyone</label>
         <input id="avatarFile" type="file" accept="image/*" style="margin-top:8px" />
@@ -127,98 +195,294 @@
     </div>
   </div>
 
-  <!-- About modal -->
-  <div id="aboutModal" class="modal" aria-hidden="true">
-    <div class="card">
-      <h2 style="margin-top:0;">About the Owner</h2>
-      <p style="margin-top:8px; color:#e9f3f4; line-height:1.4;">
-        Hello! I'm the creator of this chat. I love building fun apps, exploring tech, and connecting with people all over the world.
-        <br><br>
-        You can follow me for more cool projects!
-      </p>
-      <div style="display:flex;justify-content:flex-end;margin-top:12px">
-        <button id="closeAbout" class="btn ghost">Close</button>
-      </div>
-    </div>
-  </div>
-
-<script type="module">
-/* ---------- Firebase and chat code (same as your original) ---------- */
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getDatabase, ref, push, onChildAdded, set as dbSet, child, get, query, limitToLast } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyBhBysX0vCpjgBybXAto1eVGJg4BMNPcE",
-  authDomain: "global-chat-4ebaf.firebaseapp.com",
-  databaseURL: "https://global-chat-4ebaf-default-rtdb.firebaseio.com",
-  projectId: "global-chat-4ebaf",
-  storageBucket: "global-chat-4ebaf.appspot.com",
-  messagingSenderId: "932946585758",
-  appId: "1:932946585758:web:299df72156b9222774b93",
-  measurementId: "G-RWRH8RCB0W"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-
-/* --- UI refs --- */
-const chatWrap = document.getElementById('chat-wrap');
-const messageInput = document.getElementById('messageInput');
-const sendBtn = document.getElementById('sendBtn');
-const imgBtn = document.getElementById('imgBtn');
-const fileInput = document.getElementById('fileInput');
-
-const profileBtn = document.getElementById('profileBtn');
-const profileModal = document.getElementById('profileModal');
-const nameField = document.getElementById('nameField');
-const bioField = document.getElementById('bioField');
-const avatarFile = document.getElementById('avatarFile');
-const profileAvatar = document.getElementById('profileAvatar');
-const saveProfile = document.getElementById('saveProfile');
-const closeProfile = document.getElementById('closeProfile');
-const profileTip = document.getElementById('profileTip');
-
-const viewModal = document.getElementById('viewModal');
-const viewAvatar = document.getElementById('viewAvatar');
-const viewName = document.getElementById('viewName');
-const viewBio = document.getElementById('viewBio');
-const viewId = document.getElementById('viewId');
-const closeView = document.getElementById('closeView');
-
-const aboutBtn = document.getElementById('aboutBtn');
-const aboutModal = document.getElementById('aboutModal');
-const closeAbout = document.getElementById('closeAbout');
-
-/* local identity */
-let uid = localStorage.getItem('gc_uid');
-if (!uid) { uid = 'u' + Date.now().toString(36) + Math.floor(Math.random()*9000); localStorage.setItem('gc_uid', uid); }
-
-let displayName = localStorage.getItem('gc_name') || ('User' + Math.floor(Math.random()*9000));
-let displayBio = localStorage.getItem('gc_bio') || '';
-let displayAvatar = localStorage.getItem('gc_avatar') || '';
-
-function refreshProfileUI(){
-  nameField.value = displayName;
-  bioField.value = displayBio;
-  profileAvatar.src = displayAvatar || defaultAvatarSVG();
-}
-refreshProfileUI();
-
-function defaultAvatarSVG(){
-  return 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='100%' height='100%' fill='%23121a1f'/><text x='50%' y='50%' fill='%23fff' font-size='22' text-anchor='middle' dominant-baseline='middle'>Avatar</text></svg>`);
-}
-
-/* --- About modal handlers --- */
-aboutBtn.onclick = () => { aboutModal.classList.add('open'); aboutModal.setAttribute('aria-hidden', 'false'); };
-closeAbout.onclick = () => { aboutModal.classList.remove('open'); aboutModal.setAttribute('aria-hidden', 'true'); };
-aboutModal.addEventListener('click', e => { if(e.target === aboutModal) closeAbout.click(); });
-
-/* --- Profile modal handlers --- */
-profileBtn.onclick = () => { profileModal.classList.add('open'); profileModal.setAttribute('aria-hidden','false'); refreshProfileUI(); };
-closeProfile.onclick = ()=> { profileModal.classList.remove('open'); profileModal.setAttribute('aria-hidden','true'); };
-profileModal.addEventListener('click', e => { if (e.target === profileModal) closeProfile.click(); });
-
-/* save profile and messages logic --- same as your original script */
-</script>
+  <script type="module">
+  /* ---------------------------  
+    Firebase Realtime DB chat + profiles (base64 avatars)  
+    - stores avatars as compressed base64 in /profiles/<uid>/avatar  
+    - messages saved in /messages  
+    NOTE: For testing set DB rules public:  
+    {  
+      "rules": { ".read": true, ".write": true }  
+    }  
+  ---------------------------- */  
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";  
+  import { getDatabase, ref, push, onChildAdded, set as dbSet, child, get, query, limitToLast } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";  
+    
+  /* ---------- YOUR FIREBASE CONFIG ---------- */  
+  const firebaseConfig = {  
+    apiKey: "AIzaSyBhBysX0vCpjgBybXAto1eVGJg4BMNPcE",  
+    authDomain: "global-chat-4ebaf.firebaseapp.com",  
+    databaseURL: "https://global-chat-4ebaf-default-rtdb.firebaseio.com",  
+    projectId: "global-chat-4ebaf",  
+    storageBucket: "global-chat-4ebaf.appspot.com",  
+    messagingSenderId: "932946585758",  
+    appId: "1:932946585758:web:299df72156b9222774b93",  
+    measurementId: "G-RWRH8RCB0W"  
+  };  
+  /* ------------------------------------------ */  
+    
+  const app = initializeApp(firebaseConfig);  
+  const db = getDatabase(app);  
+    
+  /* UI refs */  
+  const chatWrap = document.getElementById('chat-wrap');  
+  const messageInput = document.getElementById('messageInput');  
+  const sendBtn = document.getElementById('sendBtn');  
+  const imgBtn = document.getElementById('imgBtn');  
+  const fileInput = document.getElementById('fileInput');  
+    
+  const aboutBtn = document.getElementById('aboutBtn');  
+  const aboutPage = document.getElementById('aboutPage');  
+  const backBtn = document.getElementById('backBtn');  
+    
+  const profileBtn = document.getElementById('profileBtn');  
+  const profileModal = document.getElementById('profileModal');  
+  const nameField = document.getElementById('nameField');  
+  const bioField = document.getElementById('bioField');  
+  const avatarFile = document.getElementById('avatarFile');  
+  const profileAvatar = document.getElementById('profileAvatar');  
+  const saveProfile = document.getElementById('saveProfile');  
+  const closeProfile = document.getElementById('closeProfile');  
+  const profileTip = document.getElementById('profileTip');  
+    
+  const viewModal = document.getElementById('viewModal');  
+  const viewAvatar = document.getElementById('viewAvatar');  
+  const viewName = document.getElementById('viewName');  
+  const viewBio = document.getElementById('viewBio');  
+  const viewId = document.getElementById('viewId');  
+  const closeView = document.getElementById('closeView');  
+    
+  /* local identity */  
+  let uid = localStorage.getItem('gc_uid');  
+  if (!uid) { uid = 'u' + Date.now().toString(36) + Math.floor(Math.random()*9000); localStorage.setItem('gc_uid', uid); }  
+    
+  let displayName = localStorage.getItem('gc_name') || ('User' + Math.floor(Math.random()*9000));  
+  let displayBio = localStorage.getItem('gc_bio') || '';  
+  let displayAvatar = localStorage.getItem('gc_avatar') || ''; // base64 string  
+    
+  /* init UI with stored profile */  
+  function refreshProfileUI(){  
+    nameField.value = displayName;  
+    bioField.value = displayBio;  
+    profileAvatar.src = displayAvatar || defaultAvatarSVG();  
+  }  
+  refreshProfileUI();  
+    
+  /* helper: default svg avatar (data URL) */  
+  function defaultAvatarSVG(){  
+    return 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='100%' height='100%' fill='%23121a1f'/><text x='50%' y='50%' fill='%23fff' font-size='22' text-anchor='middle' dominant-baseline='middle'>Avatar</text></svg>`);  
+  }  
+    
+  /* --- utility: compress image file to base64 (maxWidth, quality) --- */  
+  function fileToCompressedDataURL(file, maxWidth=800, quality=0.7){  
+    return new Promise((res, rej)=>{  
+      const reader = new FileReader();  
+      reader.onload = () => {  
+        const img = new Image();  
+        img.onload = () => {  
+          const scale = Math.min(1, maxWidth / img.width);  
+          const canvas = document.createElement('canvas');  
+          canvas.width = Math.round(img.width * scale);  
+          canvas.height = Math.round(img.height * scale);  
+          const ctx = canvas.getContext('2d');  
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);  
+          const mime = 'image/jpeg';  
+          const dataUrl = canvas.toDataURL(mime, quality);  
+          res(dataUrl);  
+        };  
+        img.onerror = e => rej(e);  
+        img.src = reader.result;  
+      };  
+      reader.onerror = e => rej(e);  
+      reader.readAsDataURL(file);  
+    });  
+  }  
+    
+  /* --- Save profile to Realtime DB under /profiles/<uid> --- */  
+  async function saveProfileToDB(){  
+    profileTip.textContent = 'Saving...';  
+    try {  
+      await dbSet(ref(db, `profiles/${uid}`), {  
+        name: displayName,  
+        bio: displayBio,  
+        avatar: displayAvatar || ''  
+      });  
+      localStorage.setItem('gc_name', displayName);  
+      localStorage.setItem('gc_bio', displayBio);  
+      if (displayAvatar) localStorage.setItem('gc_avatar', displayAvatar);  
+      profileTip.textContent = 'Saved';  
+      setTimeout(()=> profileTip.textContent = 'Saved ✓', 800);  
+    } catch(err){  
+      console.error(err); profileTip.textContent = 'Save failed';  
+    }  
+  }  
+    
+  /* About page handlers */
+  aboutBtn.onclick = () => { 
+    aboutPage.classList.add('active'); 
+  };
+  
+  backBtn.onclick = () => { 
+    aboutPage.classList.remove('active'); 
+  };
+    
+  /* profile modal handlers */  
+  profileBtn.onclick = () => { profileModal.classList.add('open'); profileModal.setAttribute('aria-hidden','false'); refreshProfileUI(); };  
+  closeProfile.onclick = ()=> { profileModal.classList.remove('open'); profileModal.setAttribute('aria-hidden','true'); };  
+  profileModal.addEventListener('click', e => { if (e.target === profileModal) closeProfile.click(); });  
+    
+  avatarFile.addEventListener('change', async (e)=>{  
+    const f = e.target.files && e.target.files[0];  
+    if (!f) return;  
+    try {  
+      profileAvatar.src = ''; // while compressing  
+      const dataUrl = await fileToCompressedDataURL(f, 600, 0.7);  
+      displayAvatar = dataUrl;  
+      profileAvatar.src = displayAvatar;  
+      profileTip.textContent = 'Preview updated';  
+    } catch(err){ console.error(err); alert('Avatar processing failed'); }  
+  });  
+    
+  /* save profile */  
+  saveProfile.addEventListener('click', async ()=>{  
+    const newName = (nameField.value || '').trim();  
+    const newBio = (bioField.value || '').trim();  
+    if (!newName) return alert('Please enter a display name');  
+    displayName = newName; displayBio = newBio;  
+    await saveProfileToDB();  
+    closeProfile.click();  
+  });  
+    
+  /* --- send message (text or with uploaded image) --- */  
+  async function sendMessage(imageDataUrl = null){  
+    const text = (messageInput.value || '').trim();  
+    if (!text && !imageDataUrl) return;  
+    const payload = {  
+      uid,  
+      name: displayName,  
+      avatar: displayAvatar || '',  
+      bio: displayBio || '',  
+      text: text || '',  
+      image: imageDataUrl || null,  
+      time: Date.now()  
+    };  
+    try {  
+      await push(ref(db, 'messages'), payload);  
+      messageInput.value = '';  
+    } catch(err){  
+      console.error('send failed', err);  
+      alert('Failed to send message');  
+    }  
+  }  
+    
+  /* send button */  
+  sendBtn.addEventListener('click', ()=> sendMessage());  
+  messageInput.addEventListener('keydown', e=> { if (e.key === 'Enter') sendMessage(); });  
+    
+  /* image send via file chooser (compress -> send) */  
+  imgBtn.addEventListener('click', ()=> fileInput.click());  
+  fileInput.addEventListener('change', async (e)=>{  
+    const f = e.target.files && e.target.files[0];  
+    if (!f) return;  
+    // quick placeholder  
+    const placeholder = createLocalPlaceholder('Uploading image...');  
+    try {  
+      const dataUrl = await fileToCompressedDataURL(f, 1000, 0.7); // compressed  
+      placeholder.remove();  
+      await sendMessage(dataUrl);  
+    } catch(err){ console.error(err); placeholder.remove(); alert('Image upload failed'); }  
+    fileInput.value = '';  
+  });  
+    
+  /* helper: create a temporary uploading message placeholder */  
+  function createLocalPlaceholder(text){  
+    const row = document.createElement('div');  
+    row.className = 'msg-row you';  
+    row.innerHTML = `<div class="avatar-small"></div><div class="bubble you"><div class="meta"><div class="name">You</div><div class="time">...</div></div><div class="text">${text}</div></div>`;  
+    chatWrap.appendChild(row);  
+    chatWrap.scrollTop = chatWrap.scrollHeight;  
+    return row;  
+  }  
+    
+  /* --- listen for messages (last 400) --- */  
+  const lastQ = query(ref(db,'messages'), limitToLast(400));  
+  onChildAdded(lastQ, snap => {  
+    const m = snap.val();  
+    if (!m) return;  
+    renderMessage(m);  
+  });  
+    
+  /* render message element */  
+  function renderMessage(m){  
+    const row = document.createElement('div');  
+    row.className = 'msg-row' + (m.uid === uid ? ' you' : '');  
+    // avatar img  
+    const avatarEl = document.createElement('img');  
+    avatarEl.className = 'avatar-small';  
+    avatarEl.src = m.avatar || defaultAvatarSVG();  
+    avatarEl.addEventListener('click', ()=> openProfile(m.uid));  
+    // bubble  
+    const bubble = document.createElement('div');  
+    bubble.className = 'bubble' + (m.uid === uid ? ' you' : '');  
+    const time = new Date(m.time || Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});  
+    const nameHtml = `<span class="name" data-uid="${escapeHtml(m.uid)}">${escapeHtml(m.name || 'User')}</span>`;  
+    const imageHtml = m.image ? `<img class="msg-img" src="${escapeHtml(m.image)}" alt="img">` : '';  
+    bubble.innerHTML = `<div class="meta"><div>${nameHtml}</div><div class="time">${time}</div></div>  
+                        <div class="text">${escapeHtml(m.text||'')}</div>  
+                        ${imageHtml}`;  
+    // name click -> open profile  
+    bubble.querySelectorAll('.name').forEach(n => n.addEventListener('click', ()=> openProfile(n.dataset.uid)));  
+    row.appendChild(avatarEl);  
+    row.appendChild(bubble);  
+    chatWrap.appendChild(row);  
+    // limit render length  
+    while (chatWrap.children.length > 800) chatWrap.removeChild(chatWrap.firstChild);  
+    chatWrap.scrollTop = chatWrap.scrollHeight;  
+  }  
+    
+  /* open public profile viewer - reads /profiles/<uid> */  
+  async function openProfile(viewUid){  
+    if (!viewUid) return;  
+    try {  
+      const snap = await get(child(ref(db), `profiles/${viewUid}`));  
+      const p = snap.exists() ? snap.val() : null;  
+      // fallback local if your own and not saved in DB  
+      if (!p && viewUid === uid) {  
+        viewAvatar.src = displayAvatar || defaultAvatarSVG();  
+        viewName.textContent = displayName;  
+        viewBio.textContent = displayBio || '';  
+        viewId.textContent = `id: ${viewUid}`;  
+        viewModal.classList.add('open'); return;  
+      }  
+      viewAvatar.src = (p && p.avatar) ? p.avatar : defaultAvatarSVG();  
+      viewName.textContent = (p && p.name) ? p.name : 'Unknown';  
+      viewBio.textContent = (p && p.bio) ? p.bio : '';  
+      viewId.textContent = `id: ${viewUid}`;  
+      viewModal.classList.add('open');  
+    } catch(err){ console.error(err); alert('Failed to load profile'); }  
+  }  
+  closeView.addEventListener('click', ()=> viewModal.classList.remove('open'));  
+    
+  /* escape helper */  
+  function escapeHtml(s=''){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }  
+    
+  /* initialize — save local profile to DB if not present */  
+  (async function init(){  
+    // if local avatar exists but not saved in DB, write profile  
+    try {  
+      const snap = await get(child(ref(db), `profiles/${uid}`));  
+      if (!snap.exists()){  
+        await dbSet(ref(db, `profiles/${uid}`), { name: displayName, bio: displayBio, avatar: displayAvatar || '' });  
+      } else {  
+        // if DB profile exists, use it to populate local  
+        const p = snap.val();  
+        if (p.name) { displayName = p.name; localStorage.setItem('gc_name', displayName); nameField.value = displayName; }  
+        if (p.bio)  { displayBio = p.bio; localStorage.setItem('gc_bio', displayBio); bioField.value = displayBio; }  
+        if (p.avatar){ displayAvatar = p.avatar; localStorage.setItem('gc_avatar', displayAvatar); }  
+      }  
+    } catch(err){ console.warn('init profile read failed', err); }  
+    refreshProfileUI();  
+  })();  
+  </script>
 </body>
 </html>
