@@ -44,7 +44,7 @@
   .modal.open { visibility:visible; opacity:1; }
   .card { width:92%; max-width:420px; background:#0f1416; border-radius:12px; padding:14px; border:1px solid rgba(255,255,255,0.03); }
   .row { display:flex; gap:12px; align-items:center; }
-  .avatar-big { width:84px; height:84px; border-radius:12px; object-fit:cover; border:2px solid rgba(255,255,255,0.04); }
+  .avatar-big { width:84px; height:84px; border-radius:12px; object-fit:cover; border:2px solid rgba(255,255,255,0.04); background: #121a1f; }
   .field { width:100%; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.04); background:rgba(0,0,0,0.18); color:#fff; outline:none; }
   .muted { color:var(--muted); font-size:13px; margin-top:8px; }
   .row-between { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:10px; }
@@ -313,7 +313,9 @@
     query, 
     limitToLast,
     update,
-    remove 
+    remove,
+    onChildChanged,
+    onChildRemoved
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";  
     
   /* ---------- YOUR FIREBASE CONFIG ---------- */  
@@ -524,7 +526,22 @@
     const m = snap.val();  
     if (!m) return;  
     renderMessage(m, snap.key);  
-  });  
+  });
+
+  // Listen for message updates
+  onChildChanged(lastQ, snap => {
+    const m = snap.val();
+    if (!m) return;
+    renderMessage(m, snap.key);
+  });
+
+  // Listen for message deletions
+  onChildRemoved(lastQ, snap => {
+    const messageElement = document.querySelector(`[data-message-id="${snap.key}"]`);
+    if (messageElement) {
+      messageElement.remove();
+    }
+  });
   
   /* render message element */  
   function renderMessage(m, messageId){  
@@ -533,6 +550,9 @@
     if (existingMessage) {
       existingMessage.remove();
     }
+
+    // Don't render deleted messages
+    if (m.deleted) return;
     
     const row = document.createElement('div');  
     row.className = 'msg-row' + (m.uid === uid ? ' you' : '');  
@@ -550,16 +570,13 @@
     
     const time = new Date(m.time || Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});  
     const nameHtml = `<span class="name" data-uid="${escapeHtml(m.uid)}">${escapeHtml(m.name || 'User')}</span>`;  
-    const imageHtml = m.image && !m.deleted ? `<img class="msg-img" src="${escapeHtml(m.image)}" alt="img">` : '';  
+    const imageHtml = m.image ? `<img class="msg-img" src="${escapeHtml(m.image)}" alt="img">` : '';  
     
-    // Check if message is deleted
+    // Check if this message is being edited
     let messageContent = '';
-    if (m.deleted) {
-      messageContent = `<div class="text deleted-message">This message was deleted</div>`;
-    } else if (currentEditingMessageId === messageId) {
+    if (currentEditingMessageId === messageId) {
       // Show edit input if this message is being edited
       messageContent = `
-        <div class="text">${escapeHtml(m.text||'')}</div>
         <input type="text" class="edit-input" value="${escapeHtml(m.text||'')}" />
         <div class="edit-buttons">
           <button class="edit-save">Save</button>
@@ -592,15 +609,22 @@
       
       // Add long press/right click event for showing menu
       let pressTimer;
-      bubble.addEventListener('mousedown', (e) => {
+      const showMenuHandler = (e) => {
         if (e.button === 2 || e.button === 0) { // Right click or left click
           pressTimer = setTimeout(() => {
             showMessageActions(actionsMenu, messageId, m);
           }, 500); // Show after 500ms hold
         }
-      });
+      };
+      
+      bubble.addEventListener('mousedown', showMenuHandler);
+      bubble.addEventListener('touchstart', showMenuHandler);
       
       bubble.addEventListener('mouseup', () => {
+        clearTimeout(pressTimer);
+      });
+      
+      bubble.addEventListener('touchend', () => {
         clearTimeout(pressTimer);
       });
       
@@ -623,25 +647,28 @@
       const saveBtn = bubble.querySelector('.edit-save');
       const cancelBtn = bubble.querySelector('.edit-cancel');
       
-      saveBtn.addEventListener('click', () => {
+      const saveEdit = () => {
         updateMessage(messageId, editInput.value);
-      });
+      };
       
-      cancelBtn.addEventListener('click', () => {
+      const cancelEdit = () => {
         currentEditingMessageId = null;
         renderMessage(m, messageId); // Re-render without edit mode
-      });
+      };
+      
+      saveBtn.addEventListener('click', saveEdit);
+      cancelBtn.addEventListener('click', cancelEdit);
       
       editInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
-          updateMessage(messageId, editInput.value);
+          saveEdit();
         } else if (e.key === 'Escape') {
-          currentEditingMessageId = null;
-          renderMessage(m, messageId); // Re-render without edit mode
+          cancelEdit();
         }
       });
       
       editInput.focus();
+      editInput.select();
     }
     
     row.appendChild(avatarEl);  
@@ -672,33 +699,32 @@
     const deleteForMeBtn = menu.querySelectorAll('.message-action.delete')[0];
     const deleteForEveryoneBtn = menu.querySelectorAll('.message-action.delete')[1];
     
-    // Remove existing event listeners
-    editBtn.replaceWith(editBtn.cloneNode(true));
-    deleteForMeBtn.replaceWith(deleteForMeBtn.cloneNode(true));
-    deleteForEveryoneBtn.replaceWith(deleteForEveryoneBtn.cloneNode(true));
+    // Remove existing event listeners by cloning
+    const newEditBtn = editBtn.cloneNode(true);
+    const newDeleteForMeBtn = deleteForMeBtn.cloneNode(true);
+    const newDeleteForEveryoneBtn = deleteForEveryoneBtn.cloneNode(true);
     
-    // Get fresh references after cloning
-    const freshEditBtn = menu.querySelector('.message-action.edit');
-    const freshDeleteForMeBtn = menu.querySelectorAll('.message-action.delete')[0];
-    const freshDeleteForEveryoneBtn = menu.querySelectorAll('.message-action.delete')[1];
+    editBtn.parentNode.replaceChild(newEditBtn, editBtn);
+    deleteForMeBtn.parentNode.replaceChild(newDeleteForMeBtn, deleteForMeBtn);
+    deleteForEveryoneBtn.parentNode.replaceChild(newDeleteForEveryoneBtn, deleteForEveryoneBtn);
     
     // Edit message
-    freshEditBtn.addEventListener('click', () => {
+    newEditBtn.addEventListener('click', () => {
       currentEditingMessageId = messageId;
       renderMessage(message, messageId);
       menu.classList.remove('show');
     });
     
-    // Delete for me only (soft delete)
-    freshDeleteForMeBtn.addEventListener('click', () => {
+    // Delete for me only (remove from DB)
+    newDeleteForMeBtn.addEventListener('click', () => {
       if (confirm('Delete this message for yourself?')) {
-        softDeleteMessage(messageId);
+        deleteMessageForMe(messageId);
       }
       menu.classList.remove('show');
     });
     
     // Delete for everyone
-    freshDeleteForEveryoneBtn.addEventListener('click', () => {
+    newDeleteForEveryoneBtn.addEventListener('click', () => {
       if (confirm('Delete this message for everyone? This cannot be undone.')) {
         deleteMessageForEveryone(messageId);
       }
@@ -735,11 +761,10 @@
     }
   }
   
-  /* Soft delete message (only for current user) */
-  async function softDeleteMessage(messageId) {
+  /* Delete message for me only */
+  async function deleteMessageForMe(messageId) {
     try {
-      // In a real implementation, you might track soft deletes per user
-      // For simplicity, we'll just remove it from the database
+      // Simply remove the message from the database
       await remove(ref(db, `messages/${messageId}`));
     } catch(err) {
       console.error('Failed to delete message:', err);
@@ -752,7 +777,7 @@
     try {
       await update(ref(db, `messages/${messageId}`), {
         deleted: true,
-        text: '',
+        text: '[This message was deleted]',
         image: null
       });
     } catch(err) {
@@ -797,13 +822,24 @@
       } else {  
         // if DB profile exists, use it to populate local  
         const p = snap.val();  
-        if (p.name) { displayName = p.name; localStorage.setItem('gc_name', displayName); nameField.value = displayName; }  
-        if (p.bio)  { displayBio = p.bio; localStorage.setItem('gc_bio', displayBio); bioField.value = displayBio; }  
-        if (p.avatar){ displayAvatar = p.avatar; localStorage.setItem('gc_avatar', displayAvatar); }  
+        if (p.name) { 
+          displayName = p.name; 
+          localStorage.setItem('gc_name', displayName); 
+          nameField.value = displayName; 
+        }  
+        if (p.bio)  { 
+          displayBio = p.bio; 
+          localStorage.setItem('gc_bio', displayBio); 
+          bioField.value = displayBio; 
+        }  
+        if (p.avatar){ 
+          displayAvatar = p.avatar; 
+          localStorage.setItem('gc_avatar', displayAvatar); 
+        }  
       }  
     } catch(err){ console.warn('init profile read failed', err); }  
     refreshProfileUI();  
   })();  
   </script>
 </body>
-            </html>
+          </html>
