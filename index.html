@@ -571,7 +571,7 @@
   onChildChanged(lastQ, snap => {
     const m = snap.val();
     if (!m) return;
-    renderMessage(m, snap.key);
+    updateMessageUI(m, snap.key);
   });
 
   // Listen for message deletions
@@ -656,67 +656,15 @@
     
     bubble.appendChild(actionsMenu);
     
-    // Add hold to show menu functionality
-    let pressTimer;
-    const showMenuHandler = (e) => {
-      // Prevent text selection
-      e.preventDefault();
-      e.stopPropagation();
-      
-      pressTimer = setTimeout(() => {
-        showMessageActions(actionsMenu, messageId, m);
-      }, 500); // Show after 500ms hold
-    };
-    
-    // Mouse events
-    bubble.addEventListener('mousedown', showMenuHandler);
-    bubble.addEventListener('mouseup', () => clearTimeout(pressTimer));
-    bubble.addEventListener('mouseleave', () => clearTimeout(pressTimer));
-    
-    // Touch events for mobile
-    bubble.addEventListener('touchstart', showMenuHandler);
-    bubble.addEventListener('touchend', () => clearTimeout(pressTimer));
-    bubble.addEventListener('touchcancel', () => clearTimeout(pressTimer));
-    
-    // Right click
-    bubble.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      showMessageActions(actionsMenu, messageId, m);
-    });
+    // Setup event listeners for this message
+    setupMessageEventListeners(bubble, actionsMenu, messageId, m);
     
     // name click -> open profile  
     bubble.querySelectorAll('.name').forEach(n => n.addEventListener('click', ()=> openProfile(n.dataset.uid)));  
     
     // Edit button handlers if in edit mode
     if (currentEditingMessageId === messageId) {
-      const editInput = bubble.querySelector('.edit-input');
-      const saveBtn = bubble.querySelector('.edit-save');
-      const cancelBtn = bubble.querySelector('.edit-cancel');
-      
-      const saveEdit = () => {
-        // Save scroll position before updating
-        scrollPosition = chatWrap.scrollTop;
-        updateMessage(messageId, editInput.value);
-      };
-      
-      const cancelEdit = () => {
-        currentEditingMessageId = null;
-        renderMessage(m, messageId); // Re-render without edit mode
-      };
-      
-      saveBtn.addEventListener('click', saveEdit);
-      cancelBtn.addEventListener('click', cancelEdit);
-      
-      editInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          saveEdit();
-        } else if (e.key === 'Escape') {
-          cancelEdit();
-        }
-      });
-      
-      editInput.focus();
-      editInput.select();
+      setupEditMode(bubble, messageId, m);
     }
     
     row.appendChild(avatarEl);  
@@ -737,6 +685,116 @@
     // limit render length  
     while (chatWrap.children.length > 800) chatWrap.removeChild(chatWrap.firstChild);  
   }
+
+  /* Update existing message UI without recreating */
+  function updateMessageUI(m, messageId) {
+    const existingRow = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (!existingRow) return;
+    
+    // Don't update if we're currently editing this message
+    if (currentEditingMessageId === messageId) return;
+    
+    // Update the message content
+    const bubble = existingRow.querySelector('.bubble');
+    const time = new Date(m.time || Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    const nameHtml = `<span class="name" data-uid="${escapeHtml(m.uid)}">${escapeHtml(m.name || 'User')}</span>`;
+    const imageHtml = m.image ? `<img class="msg-img" src="${escapeHtml(m.image)}" alt="img">` : '';
+    
+    bubble.innerHTML = `
+      <div class="meta">
+        <div>${nameHtml}</div>
+        <div class="time">${time} ${m.edited ? '✏️' : ''}</div>
+      </div>
+      <div class="text" style="user-select: none; -webkit-user-select: none;">${escapeHtml(m.text||'')} ${m.edited ? '<span style="font-size:11px;color:var(--muted);">(edited)</span>' : ''}</div>
+      ${imageHtml}
+    `;
+    
+    // Re-add actions menu
+    const actionsMenu = document.createElement('div');
+    actionsMenu.className = 'message-actions';
+    
+    if (m.uid === uid) {
+      actionsMenu.innerHTML = `
+        <button class="message-action copy">📋 Copy Text</button>
+        <button class="message-action edit">✏️ Edit</button>
+        <button class="message-action delete">🗑️ Delete for me</button>
+        <button class="message-action delete">🚫 Delete for everyone</button>
+      `;
+    } else {
+      actionsMenu.innerHTML = `
+        <button class="message-action copy">📋 Copy Text</button>
+      `;
+    }
+    
+    bubble.appendChild(actionsMenu);
+    
+    // Re-setup event listeners
+    setupMessageEventListeners(bubble, actionsMenu, messageId, m);
+    bubble.querySelectorAll('.name').forEach(n => n.addEventListener('click', ()=> openProfile(n.dataset.uid)));
+  }
+
+  /* Setup event listeners for message actions */
+  function setupMessageEventListeners(bubble, menu, messageId, message) {
+    // Add hold to show menu functionality
+    let pressTimer;
+    const showMenuHandler = (e) => {
+      // Prevent text selection
+      e.preventDefault();
+      e.stopPropagation();
+      
+      pressTimer = setTimeout(() => {
+        showMessageActions(menu, messageId, message);
+      }, 500); // Show after 500ms hold
+    };
+    
+    // Mouse events
+    bubble.addEventListener('mousedown', showMenuHandler);
+    bubble.addEventListener('mouseup', () => clearTimeout(pressTimer));
+    bubble.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+    
+    // Touch events for mobile
+    bubble.addEventListener('touchstart', showMenuHandler);
+    bubble.addEventListener('touchend', () => clearTimeout(pressTimer));
+    bubble.addEventListener('touchcancel', () => clearTimeout(pressTimer));
+    
+    // Right click
+    bubble.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showMessageActions(menu, messageId, message);
+    });
+  }
+
+  /* Setup edit mode for a message */
+  function setupEditMode(bubble, messageId, message) {
+    const editInput = bubble.querySelector('.edit-input');
+    const saveBtn = bubble.querySelector('.edit-save');
+    const cancelBtn = bubble.querySelector('.edit-cancel');
+    
+    const saveEdit = () => {
+      // Save scroll position before updating
+      scrollPosition = chatWrap.scrollTop;
+      updateMessage(messageId, editInput.value);
+    };
+    
+    const cancelEdit = () => {
+      currentEditingMessageId = null;
+      renderMessage(message, messageId); // Re-render without edit mode
+    };
+    
+    saveBtn.addEventListener('click', saveEdit);
+    cancelBtn.addEventListener('click', cancelEdit);
+    
+    editInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        saveEdit();
+      } else if (e.key === 'Escape') {
+        cancelEdit();
+      }
+    });
+    
+    editInput.focus();
+    editInput.select();
+  }
   
   /* Show message actions menu */
   function showMessageActions(menu, messageId, message) {
@@ -752,64 +810,51 @@
     menu.style.top = `${-10}px`;
     menu.style.right = `${10}px`;
     
-    // Add event listeners to action buttons
+    // Setup event listeners for action buttons
     const copyBtn = menu.querySelector('.message-action.copy');
     const editBtn = menu.querySelector('.message-action.edit');
     const deleteForMeBtn = menu.querySelectorAll('.message-action.delete')[0];
     const deleteForEveryoneBtn = menu.querySelectorAll('.message-action.delete')[1];
     
-    // Remove existing event listeners by cloning
+    // Copy text functionality
     if (copyBtn) {
-      const newCopyBtn = copyBtn.cloneNode(true);
-      copyBtn.parentNode.replaceChild(newCopyBtn, copyBtn);
-      
-      // Copy text functionality
-      newCopyBtn.addEventListener('click', () => {
+      copyBtn.onclick = () => {
         navigator.clipboard.writeText(message.text || '').then(() => {
           showToast('Text copied to clipboard!');
         }).catch(() => {
           showToast('Failed to copy text');
         });
         menu.classList.remove('show');
-      });
+      };
     }
     
+    // Edit message
     if (editBtn) {
-      const newEditBtn = editBtn.cloneNode(true);
-      editBtn.parentNode.replaceChild(newEditBtn, editBtn);
-      
-      // Edit message
-      newEditBtn.addEventListener('click', () => {
+      editBtn.onclick = () => {
         currentEditingMessageId = messageId;
         renderMessage(message, messageId);
         menu.classList.remove('show');
-      });
+      };
     }
     
+    // Delete for me only
     if (deleteForMeBtn) {
-      const newDeleteForMeBtn = deleteForMeBtn.cloneNode(true);
-      deleteForMeBtn.parentNode.replaceChild(newDeleteForMeBtn, deleteForMeBtn);
-      
-      // Delete for me only (remove from DB)
-      newDeleteForMeBtn.addEventListener('click', () => {
+      deleteForMeBtn.onclick = () => {
         if (confirm('Delete this message for yourself?')) {
           deleteMessageForMe(messageId);
         }
         menu.classList.remove('show');
-      });
+      };
     }
     
+    // Delete for everyone
     if (deleteForEveryoneBtn) {
-      const newDeleteForEveryoneBtn = deleteForEveryoneBtn.cloneNode(true);
-      deleteForEveryoneBtn.parentNode.replaceChild(newDeleteForEveryoneBtn, deleteForEveryoneBtn);
-      
-      // Delete for everyone
-      newDeleteForEveryoneBtn.addEventListener('click', () => {
+      deleteForEveryoneBtn.onclick = () => {
         if (confirm('Delete this message for everyone? This cannot be undone.')) {
           deleteMessageForEveryone(messageId);
         }
         menu.classList.remove('show');
-      });
+      };
     }
     
     // Close menu when clicking outside
@@ -923,4 +968,4 @@
   })();  
   </script>
 </body>
-</html>
+  </html>
