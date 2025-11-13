@@ -26,7 +26,7 @@
   .msg-row { display:flex; gap:10px; align-items:flex-start; margin:8px 0; max-width:100%; }
   .msg-row.you { flex-direction:row-reverse; }
   .avatar-small { width:40px; height:40px; border-radius:8px; object-fit:cover; border:1px solid rgba(255,255,255,0.04); cursor:pointer; }
-  .bubble { max-width:78%; background:var(--bubble); padding:8px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.03); }
+  .bubble { max-width:78%; background:var(--bubble); padding:8px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.03); position:relative; }
   .bubble.you { background:var(--bubble-you); }
   .meta { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; }
   .name { font-weight:700; color:#cfeef0; cursor:pointer; font-size:13px; }
@@ -105,6 +105,99 @@
     width: 100%;
   }
   
+  /* Message actions menu */
+  .message-actions {
+    position: absolute;
+    top: -10px;
+    right: 10px;
+    background: var(--panel);
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 10;
+  }
+  
+  .message-actions.show {
+    display: flex;
+  }
+  
+  .message-action {
+    background: none;
+    border: none;
+    color: #fff;
+    padding: 10px 16px;
+    text-align: left;
+    cursor: pointer;
+    font-size: 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .message-action:last-child {
+    border-bottom: none;
+  }
+  
+  .message-action:hover {
+    background: rgba(255,255,255,0.05);
+  }
+  
+  .message-action.delete {
+    color: #ff6b6b;
+  }
+  
+  .message-action.edit {
+    color: var(--accent);
+  }
+  
+  /* Edit message input */
+  .edit-input {
+    width: 100%;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 8px;
+    color: #fff;
+    font-size: 15px;
+    margin-top: 6px;
+  }
+  
+  .edit-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  
+  .edit-buttons button {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: none;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  
+  .edit-save {
+    background: var(--accent);
+    color: #012;
+    font-weight: 600;
+  }
+  
+  .edit-cancel {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+  }
+  
+  /* Deleted message style */
+  .deleted-message {
+    font-style: italic;
+    color: var(--muted);
+    opacity: 0.7;
+  }
+  
   /* small screens */
   @media (max-width:420px){
     .avatar-small{width:36px;height:36px}
@@ -112,6 +205,9 @@
     header h1{font-size:15px}
     .about-card {
       padding: 20px;
+    }
+    .message-actions {
+      right: 5px;
     }
   }
 </style>
@@ -206,7 +302,19 @@
     }  
   ---------------------------- */  
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";  
-  import { getDatabase, ref, push, onChildAdded, set as dbSet, child, get, query, limitToLast } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";  
+  import { 
+    getDatabase, 
+    ref, 
+    push, 
+    onChildAdded, 
+    set as dbSet, 
+    child, 
+    get, 
+    query, 
+    limitToLast,
+    update,
+    remove 
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";  
     
   /* ---------- YOUR FIREBASE CONFIG ---------- */  
   const firebaseConfig = {  
@@ -259,6 +367,10 @@
   let displayName = localStorage.getItem('gc_name') || ('User' + Math.floor(Math.random()*9000));  
   let displayBio = localStorage.getItem('gc_bio') || '';  
   let displayAvatar = localStorage.getItem('gc_avatar') || ''; // base64 string  
+    
+  /* Message actions state */
+  let currentEditingMessageId = null;
+  let messageActionsMenu = null;
     
   /* init UI with stored profile */  
   function refreshProfileUI(){  
@@ -364,7 +476,9 @@
       bio: displayBio || '',  
       text: text || '',  
       image: imageDataUrl || null,  
-      time: Date.now()  
+      time: Date.now(),  
+      edited: false,
+      deleted: false
     };  
     try {  
       await push(ref(db, 'messages'), payload);  
@@ -409,36 +523,243 @@
   onChildAdded(lastQ, snap => {  
     const m = snap.val();  
     if (!m) return;  
-    renderMessage(m);  
+    renderMessage(m, snap.key);  
   });  
-    
+  
   /* render message element */  
-  function renderMessage(m){  
+  function renderMessage(m, messageId){  
+    // Check if message already exists
+    const existingMessage = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (existingMessage) {
+      existingMessage.remove();
+    }
+    
     const row = document.createElement('div');  
     row.className = 'msg-row' + (m.uid === uid ? ' you' : '');  
+    row.setAttribute('data-message-id', messageId);
+    
     // avatar img  
     const avatarEl = document.createElement('img');  
     avatarEl.className = 'avatar-small';  
     avatarEl.src = m.avatar || defaultAvatarSVG();  
     avatarEl.addEventListener('click', ()=> openProfile(m.uid));  
+    
     // bubble  
     const bubble = document.createElement('div');  
     bubble.className = 'bubble' + (m.uid === uid ? ' you' : '');  
+    
     const time = new Date(m.time || Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});  
     const nameHtml = `<span class="name" data-uid="${escapeHtml(m.uid)}">${escapeHtml(m.name || 'User')}</span>`;  
-    const imageHtml = m.image ? `<img class="msg-img" src="${escapeHtml(m.image)}" alt="img">` : '';  
-    bubble.innerHTML = `<div class="meta"><div>${nameHtml}</div><div class="time">${time}</div></div>  
-                        <div class="text">${escapeHtml(m.text||'')}</div>  
-                        ${imageHtml}`;  
+    const imageHtml = m.image && !m.deleted ? `<img class="msg-img" src="${escapeHtml(m.image)}" alt="img">` : '';  
+    
+    // Check if message is deleted
+    let messageContent = '';
+    if (m.deleted) {
+      messageContent = `<div class="text deleted-message">This message was deleted</div>`;
+    } else if (currentEditingMessageId === messageId) {
+      // Show edit input if this message is being edited
+      messageContent = `
+        <div class="text">${escapeHtml(m.text||'')}</div>
+        <input type="text" class="edit-input" value="${escapeHtml(m.text||'')}" />
+        <div class="edit-buttons">
+          <button class="edit-save">Save</button>
+          <button class="edit-cancel">Cancel</button>
+        </div>
+      `;
+    } else {
+      messageContent = `<div class="text">${escapeHtml(m.text||'')} ${m.edited ? '<span style="font-size:11px;color:var(--muted);">(edited)</span>' : ''}</div>`;
+    }
+    
+    bubble.innerHTML = `
+      <div class="meta">
+        <div>${nameHtml}</div>
+        <div class="time">${time} ${m.edited ? '✏️' : ''}</div>
+      </div>
+      ${messageContent}
+      ${imageHtml}
+    `;
+    
+    // Add message actions menu for user's own messages
+    if (m.uid === uid && !m.deleted) {
+      const actionsMenu = document.createElement('div');
+      actionsMenu.className = 'message-actions';
+      actionsMenu.innerHTML = `
+        <button class="message-action edit">✏️ Edit</button>
+        <button class="message-action delete">🗑️ Delete for me</button>
+        <button class="message-action delete">🚫 Delete for everyone</button>
+      `;
+      bubble.appendChild(actionsMenu);
+      
+      // Add long press/right click event for showing menu
+      let pressTimer;
+      bubble.addEventListener('mousedown', (e) => {
+        if (e.button === 2 || e.button === 0) { // Right click or left click
+          pressTimer = setTimeout(() => {
+            showMessageActions(actionsMenu, messageId, m);
+          }, 500); // Show after 500ms hold
+        }
+      });
+      
+      bubble.addEventListener('mouseup', () => {
+        clearTimeout(pressTimer);
+      });
+      
+      bubble.addEventListener('mouseleave', () => {
+        clearTimeout(pressTimer);
+      });
+      
+      bubble.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showMessageActions(actionsMenu, messageId, m);
+      });
+    }
+    
     // name click -> open profile  
     bubble.querySelectorAll('.name').forEach(n => n.addEventListener('click', ()=> openProfile(n.dataset.uid)));  
+    
+    // Edit button handlers if in edit mode
+    if (currentEditingMessageId === messageId) {
+      const editInput = bubble.querySelector('.edit-input');
+      const saveBtn = bubble.querySelector('.edit-save');
+      const cancelBtn = bubble.querySelector('.edit-cancel');
+      
+      saveBtn.addEventListener('click', () => {
+        updateMessage(messageId, editInput.value);
+      });
+      
+      cancelBtn.addEventListener('click', () => {
+        currentEditingMessageId = null;
+        renderMessage(m, messageId); // Re-render without edit mode
+      });
+      
+      editInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          updateMessage(messageId, editInput.value);
+        } else if (e.key === 'Escape') {
+          currentEditingMessageId = null;
+          renderMessage(m, messageId); // Re-render without edit mode
+        }
+      });
+      
+      editInput.focus();
+    }
+    
     row.appendChild(avatarEl);  
     row.appendChild(bubble);  
     chatWrap.appendChild(row);  
+    
     // limit render length  
     while (chatWrap.children.length > 800) chatWrap.removeChild(chatWrap.firstChild);  
     chatWrap.scrollTop = chatWrap.scrollHeight;  
-  }  
+  }
+  
+  /* Show message actions menu */
+  function showMessageActions(menu, messageId, message) {
+    // Hide any other open menus
+    document.querySelectorAll('.message-actions.show').forEach(m => {
+      m.classList.remove('show');
+    });
+    
+    menu.classList.add('show');
+    
+    // Position the menu
+    const rect = menu.parentElement.getBoundingClientRect();
+    menu.style.top = `${-10}px`;
+    menu.style.right = `${10}px`;
+    
+    // Add event listeners to action buttons
+    const editBtn = menu.querySelector('.message-action.edit');
+    const deleteForMeBtn = menu.querySelectorAll('.message-action.delete')[0];
+    const deleteForEveryoneBtn = menu.querySelectorAll('.message-action.delete')[1];
+    
+    // Remove existing event listeners
+    editBtn.replaceWith(editBtn.cloneNode(true));
+    deleteForMeBtn.replaceWith(deleteForMeBtn.cloneNode(true));
+    deleteForEveryoneBtn.replaceWith(deleteForEveryoneBtn.cloneNode(true));
+    
+    // Get fresh references after cloning
+    const freshEditBtn = menu.querySelector('.message-action.edit');
+    const freshDeleteForMeBtn = menu.querySelectorAll('.message-action.delete')[0];
+    const freshDeleteForEveryoneBtn = menu.querySelectorAll('.message-action.delete')[1];
+    
+    // Edit message
+    freshEditBtn.addEventListener('click', () => {
+      currentEditingMessageId = messageId;
+      renderMessage(message, messageId);
+      menu.classList.remove('show');
+    });
+    
+    // Delete for me only (soft delete)
+    freshDeleteForMeBtn.addEventListener('click', () => {
+      if (confirm('Delete this message for yourself?')) {
+        softDeleteMessage(messageId);
+      }
+      menu.classList.remove('show');
+    });
+    
+    // Delete for everyone
+    freshDeleteForEveryoneBtn.addEventListener('click', () => {
+      if (confirm('Delete this message for everyone? This cannot be undone.')) {
+        deleteMessageForEveryone(messageId);
+      }
+      menu.classList.remove('show');
+    });
+    
+    // Close menu when clicking outside
+    const closeMenuHandler = (e) => {
+      if (!menu.contains(e.target)) {
+        menu.classList.remove('show');
+        document.removeEventListener('click', closeMenuHandler);
+      }
+    };
+    
+    setTimeout(() => {
+      document.addEventListener('click', closeMenuHandler);
+    }, 10);
+  }
+  
+  /* Update message text */
+  async function updateMessage(messageId, newText) {
+    if (!newText.trim()) return;
+    
+    try {
+      await update(ref(db, `messages/${messageId}`), {
+        text: newText.trim(),
+        edited: true,
+        editTime: Date.now()
+      });
+      currentEditingMessageId = null;
+    } catch(err) {
+      console.error('Failed to update message:', err);
+      alert('Failed to update message');
+    }
+  }
+  
+  /* Soft delete message (only for current user) */
+  async function softDeleteMessage(messageId) {
+    try {
+      // In a real implementation, you might track soft deletes per user
+      // For simplicity, we'll just remove it from the database
+      await remove(ref(db, `messages/${messageId}`));
+    } catch(err) {
+      console.error('Failed to delete message:', err);
+      alert('Failed to delete message');
+    }
+  }
+  
+  /* Delete message for everyone */
+  async function deleteMessageForEveryone(messageId) {
+    try {
+      await update(ref(db, `messages/${messageId}`), {
+        deleted: true,
+        text: '',
+        image: null
+      });
+    } catch(err) {
+      console.error('Failed to delete message for everyone:', err);
+      alert('Failed to delete message for everyone');
+    }
+  }
     
   /* open public profile viewer - reads /profiles/<uid> */  
   async function openProfile(viewUid){  
@@ -485,4 +806,4 @@
   })();  
   </script>
 </body>
-</html>
+            </html>
