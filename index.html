@@ -154,6 +154,10 @@
     color: var(--accent);
   }
   
+  .message-action.copy {
+    color: #4dabf7;
+  }
+  
   /* Edit message input */
   .edit-input {
     width: 100%;
@@ -198,6 +202,27 @@
     opacity: 0.7;
   }
   
+  /* Toast notification */
+  .toast {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--panel);
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  
+  .toast.show {
+    opacity: 1;
+  }
+  
   /* small screens */
   @media (max-width:420px){
     .avatar-small{width:36px;height:36px}
@@ -236,6 +261,9 @@
     <button id="imgBtn" class="icon" title="Send image">📷</button>
     <button id="sendBtn" class="send">Send</button>
   </div>
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast"></div>
 
   <!-- About page -->
   <div id="aboutPage">
@@ -340,6 +368,7 @@
   const sendBtn = document.getElementById('sendBtn');  
   const imgBtn = document.getElementById('imgBtn');  
   const fileInput = document.getElementById('fileInput');  
+  const toast = document.getElementById('toast');
     
   const aboutBtn = document.getElementById('aboutBtn');  
   const aboutPage = document.getElementById('aboutPage');  
@@ -373,6 +402,7 @@
   /* Message actions state */
   let currentEditingMessageId = null;
   let messageActionsMenu = null;
+  let scrollPosition = null;
     
   /* init UI with stored profile */  
   function refreshProfileUI(){  
@@ -386,6 +416,15 @@
   function defaultAvatarSVG(){  
     return 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='100%' height='100%' fill='%23121a1f'/><text x='50%' y='50%' fill='%23fff' font-size='22' text-anchor='middle' dominant-baseline='middle'>Avatar</text></svg>`);  
   }  
+
+  /* Show toast notification */
+  function showToast(message) {
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => {
+      toast.classList.remove('show');
+    }, 2000);
+  }
     
   /* --- utility: compress image file to base64 (maxWidth, quality) --- */  
   function fileToCompressedDataURL(file, maxWidth=800, quality=0.7){  
@@ -584,7 +623,7 @@
         </div>
       `;
     } else {
-      messageContent = `<div class="text">${escapeHtml(m.text||'')} ${m.edited ? '<span style="font-size:11px;color:var(--muted);">(edited)</span>' : ''}</div>`;
+      messageContent = `<div class="text" style="user-select: none; -webkit-user-select: none;">${escapeHtml(m.text||'')} ${m.edited ? '<span style="font-size:11px;color:var(--muted);">(edited)</span>' : ''}</div>`;
     }
     
     bubble.innerHTML = `
@@ -596,47 +635,54 @@
       ${imageHtml}
     `;
     
-    // Add message actions menu for user's own messages
-    if (m.uid === uid && !m.deleted) {
-      const actionsMenu = document.createElement('div');
-      actionsMenu.className = 'message-actions';
+    // Add message actions menu for all messages
+    const actionsMenu = document.createElement('div');
+    actionsMenu.className = 'message-actions';
+    
+    if (m.uid === uid) {
+      // User's own message - show edit and delete options
       actionsMenu.innerHTML = `
+        <button class="message-action copy">📋 Copy Text</button>
         <button class="message-action edit">✏️ Edit</button>
         <button class="message-action delete">🗑️ Delete for me</button>
         <button class="message-action delete">🚫 Delete for everyone</button>
       `;
-      bubble.appendChild(actionsMenu);
-      
-      // Add long press/right click event for showing menu
-      let pressTimer;
-      const showMenuHandler = (e) => {
-        if (e.button === 2 || e.button === 0) { // Right click or left click
-          pressTimer = setTimeout(() => {
-            showMessageActions(actionsMenu, messageId, m);
-          }, 500); // Show after 500ms hold
-        }
-      };
-      
-      bubble.addEventListener('mousedown', showMenuHandler);
-      bubble.addEventListener('touchstart', showMenuHandler);
-      
-      bubble.addEventListener('mouseup', () => {
-        clearTimeout(pressTimer);
-      });
-      
-      bubble.addEventListener('touchend', () => {
-        clearTimeout(pressTimer);
-      });
-      
-      bubble.addEventListener('mouseleave', () => {
-        clearTimeout(pressTimer);
-      });
-      
-      bubble.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        showMessageActions(actionsMenu, messageId, m);
-      });
+    } else {
+      // Other user's message - show only copy option
+      actionsMenu.innerHTML = `
+        <button class="message-action copy">📋 Copy Text</button>
+      `;
     }
+    
+    bubble.appendChild(actionsMenu);
+    
+    // Add hold to show menu functionality
+    let pressTimer;
+    const showMenuHandler = (e) => {
+      // Prevent text selection
+      e.preventDefault();
+      e.stopPropagation();
+      
+      pressTimer = setTimeout(() => {
+        showMessageActions(actionsMenu, messageId, m);
+      }, 500); // Show after 500ms hold
+    };
+    
+    // Mouse events
+    bubble.addEventListener('mousedown', showMenuHandler);
+    bubble.addEventListener('mouseup', () => clearTimeout(pressTimer));
+    bubble.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+    
+    // Touch events for mobile
+    bubble.addEventListener('touchstart', showMenuHandler);
+    bubble.addEventListener('touchend', () => clearTimeout(pressTimer));
+    bubble.addEventListener('touchcancel', () => clearTimeout(pressTimer));
+    
+    // Right click
+    bubble.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showMessageActions(actionsMenu, messageId, m);
+    });
     
     // name click -> open profile  
     bubble.querySelectorAll('.name').forEach(n => n.addEventListener('click', ()=> openProfile(n.dataset.uid)));  
@@ -648,6 +694,8 @@
       const cancelBtn = bubble.querySelector('.edit-cancel');
       
       const saveEdit = () => {
+        // Save scroll position before updating
+        scrollPosition = chatWrap.scrollTop;
         updateMessage(messageId, editInput.value);
       };
       
@@ -675,9 +723,19 @@
     row.appendChild(bubble);  
     chatWrap.appendChild(row);  
     
+    // Restore scroll position after edit if needed
+    if (scrollPosition !== null) {
+      chatWrap.scrollTop = scrollPosition;
+      scrollPosition = null;
+    }
+    
+    // Auto scroll to bottom only for new messages, not when editing
+    if (!currentEditingMessageId && messageId !== currentEditingMessageId) {
+      chatWrap.scrollTop = chatWrap.scrollHeight;
+    }
+    
     // limit render length  
     while (chatWrap.children.length > 800) chatWrap.removeChild(chatWrap.firstChild);  
-    chatWrap.scrollTop = chatWrap.scrollHeight;  
   }
   
   /* Show message actions menu */
@@ -695,41 +753,64 @@
     menu.style.right = `${10}px`;
     
     // Add event listeners to action buttons
+    const copyBtn = menu.querySelector('.message-action.copy');
     const editBtn = menu.querySelector('.message-action.edit');
     const deleteForMeBtn = menu.querySelectorAll('.message-action.delete')[0];
     const deleteForEveryoneBtn = menu.querySelectorAll('.message-action.delete')[1];
     
     // Remove existing event listeners by cloning
-    const newEditBtn = editBtn.cloneNode(true);
-    const newDeleteForMeBtn = deleteForMeBtn.cloneNode(true);
-    const newDeleteForEveryoneBtn = deleteForEveryoneBtn.cloneNode(true);
+    if (copyBtn) {
+      const newCopyBtn = copyBtn.cloneNode(true);
+      copyBtn.parentNode.replaceChild(newCopyBtn, copyBtn);
+      
+      // Copy text functionality
+      newCopyBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(message.text || '').then(() => {
+          showToast('Text copied to clipboard!');
+        }).catch(() => {
+          showToast('Failed to copy text');
+        });
+        menu.classList.remove('show');
+      });
+    }
     
-    editBtn.parentNode.replaceChild(newEditBtn, editBtn);
-    deleteForMeBtn.parentNode.replaceChild(newDeleteForMeBtn, deleteForMeBtn);
-    deleteForEveryoneBtn.parentNode.replaceChild(newDeleteForEveryoneBtn, deleteForEveryoneBtn);
+    if (editBtn) {
+      const newEditBtn = editBtn.cloneNode(true);
+      editBtn.parentNode.replaceChild(newEditBtn, editBtn);
+      
+      // Edit message
+      newEditBtn.addEventListener('click', () => {
+        currentEditingMessageId = messageId;
+        renderMessage(message, messageId);
+        menu.classList.remove('show');
+      });
+    }
     
-    // Edit message
-    newEditBtn.addEventListener('click', () => {
-      currentEditingMessageId = messageId;
-      renderMessage(message, messageId);
-      menu.classList.remove('show');
-    });
+    if (deleteForMeBtn) {
+      const newDeleteForMeBtn = deleteForMeBtn.cloneNode(true);
+      deleteForMeBtn.parentNode.replaceChild(newDeleteForMeBtn, deleteForMeBtn);
+      
+      // Delete for me only (remove from DB)
+      newDeleteForMeBtn.addEventListener('click', () => {
+        if (confirm('Delete this message for yourself?')) {
+          deleteMessageForMe(messageId);
+        }
+        menu.classList.remove('show');
+      });
+    }
     
-    // Delete for me only (remove from DB)
-    newDeleteForMeBtn.addEventListener('click', () => {
-      if (confirm('Delete this message for yourself?')) {
-        deleteMessageForMe(messageId);
-      }
-      menu.classList.remove('show');
-    });
-    
-    // Delete for everyone
-    newDeleteForEveryoneBtn.addEventListener('click', () => {
-      if (confirm('Delete this message for everyone? This cannot be undone.')) {
-        deleteMessageForEveryone(messageId);
-      }
-      menu.classList.remove('show');
-    });
+    if (deleteForEveryoneBtn) {
+      const newDeleteForEveryoneBtn = deleteForEveryoneBtn.cloneNode(true);
+      deleteForEveryoneBtn.parentNode.replaceChild(newDeleteForEveryoneBtn, deleteForEveryoneBtn);
+      
+      // Delete for everyone
+      newDeleteForEveryoneBtn.addEventListener('click', () => {
+        if (confirm('Delete this message for everyone? This cannot be undone.')) {
+          deleteMessageForEveryone(messageId);
+        }
+        menu.classList.remove('show');
+      });
+    }
     
     // Close menu when clicking outside
     const closeMenuHandler = (e) => {
@@ -842,4 +923,4 @@
   })();  
   </script>
 </body>
-          </html>
+</html>
