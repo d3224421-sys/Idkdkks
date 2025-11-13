@@ -156,14 +156,6 @@
     color: var(--accent);
   }
   
-  .message-action.copy {
-    color: #4dabf7;
-  }
-  
-  .message-action.emoji {
-    color: #ffd700;
-  }
-  
   /* Edit message input */
   .edit-input {
     width: 100%;
@@ -229,21 +221,24 @@
     opacity: 1;
   }
   
-  /* Emoji reaction */
-  .emoji-reaction {
-    display: inline-flex;
+  /* Emoji button */
+  .emoji-btn {
+    background: #0b0d0f;
+    border: 1px solid rgba(255,255,255,0.04);
+    color: var(--muted);
+    padding: 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 18px;
+    display: flex;
     align-items: center;
-    gap: 4px;
-    background: rgba(255,255,255,0.1);
-    padding: 4px 8px;
-    border-radius: 12px;
-    margin-top: 4px;
-    font-size: 12px;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
   }
   
-  .emoji-reaction img {
-    width: 16px;
-    height: 16px;
+  .emoji-btn:hover {
+    background: rgba(255,255,255,0.05);
   }
   
   /* small screens */
@@ -257,6 +252,11 @@
     .message-actions {
       right: 5px;
       min-width: 160px;
+    }
+    .emoji-btn {
+      width: 36px;
+      height: 36px;
+      font-size: 16px;
     }
   }
 </style>
@@ -283,6 +283,7 @@
     </div>
     <input id="fileInput" type="file" accept="image/*" style="display:none" />
     <button id="imgBtn" class="icon" title="Send image">📷</button>
+    <button id="emojiBtn" class="emoji-btn" title="Send EZ">😂</button>
     <button id="sendBtn" class="send">Send</button>
   </div>
 
@@ -391,6 +392,7 @@
   const messageInput = document.getElementById('messageInput');  
   const sendBtn = document.getElementById('sendBtn');  
   const imgBtn = document.getElementById('imgBtn');  
+  const emojiBtn = document.getElementById('emojiBtn');
   const fileInput = document.getElementById('fileInput');  
   const toast = document.getElementById('toast');
     
@@ -426,7 +428,6 @@
   /* Message actions state */
   let currentEditingMessageId = null;
   let scrollPosition = null;
-  const EMOJI_URL = "https://files.catbox.moe/gvhwqz.jpeg";
     
   /* init UI with stored profile */  
   function refreshProfileUI(){  
@@ -531,8 +532,8 @@
   });  
     
   /* --- send message (text or with uploaded image) --- */  
-  async function sendMessage(imageDataUrl = null){  
-    const text = (messageInput.value || '').trim();  
+  async function sendMessage(imageDataUrl = null, emojiText = null){  
+    const text = emojiText || (messageInput.value || '').trim();  
     if (!text && !imageDataUrl) return;  
     const payload = {  
       uid,  
@@ -543,11 +544,11 @@
       image: imageDataUrl || null,  
       time: Date.now(),  
       edited: false,
-      deleted: false,
-      reactions: {}
+      deleted: false
     };  
     try {  
       await push(ref(db, 'messages'), payload);  
+      // Clear the input field after sending
       messageInput.value = '';  
     } catch(err){  
       console.error('send failed', err);  
@@ -557,7 +558,16 @@
     
   /* send button */  
   sendBtn.addEventListener('click', ()=> sendMessage());  
-  messageInput.addEventListener('keydown', e=> { if (e.key === 'Enter') sendMessage(); });  
+  messageInput.addEventListener('keydown', e=> { 
+    if (e.key === 'Enter') {
+      sendMessage();
+    }
+  });  
+  
+  /* emoji button */
+  emojiBtn.addEventListener('click', ()=> {
+    sendMessage(null, '😂 EZ');
+  });
     
   /* image send via file chooser (compress -> send) */  
   imgBtn.addEventListener('click', ()=> fileInput.click());  
@@ -640,15 +650,6 @@
     const nameHtml = `<span class="name" data-uid="${escapeHtml(m.uid)}">${escapeHtml(m.name || 'User')}</span>`;  
     const imageHtml = m.image ? `<img class="msg-img" src="${escapeHtml(m.image)}" alt="img">` : '';  
     
-    // Reactions display
-    let reactionsHtml = '';
-    if (m.reactions && Object.keys(m.reactions).length > 0) {
-      reactionsHtml = `<div class="emoji-reaction">
-        <img src="${EMOJI_URL}" alt="EZ">
-        <span>${Object.keys(m.reactions).length}</span>
-      </div>`;
-    }
-    
     // Check if this message is being edited
     let messageContent = '';
     if (currentEditingMessageId === messageId) {
@@ -671,33 +672,33 @@
       </div>
       ${messageContent}
       ${imageHtml}
-      ${reactionsHtml}
     `;
     
-    // Add message actions menu
+    // Add message actions menu - SIMPLIFIED (no copy text, no emoji reactions)
     const actionsMenu = document.createElement('div');
     actionsMenu.className = 'message-actions';
     
     if (m.uid === uid) {
-      // User's own message - show all options
+      // User's own message - show only edit and delete options
       actionsMenu.innerHTML = `
-        <button class="message-action copy" data-action="copy">📋 Copy Text</button>
         <button class="message-action edit" data-action="edit">✏️ Edit</button>
         <button class="message-action delete" data-action="delete-me">🗑️ Delete for me</button>
         <button class="message-action delete" data-action="delete-all">🚫 Delete for everyone</button>
       `;
     } else {
-      // Other user's message - show copy and emoji options
-      actionsMenu.innerHTML = `
-        <button class="message-action copy" data-action="copy">📋 Copy Text</button>
-        <button class="message-action emoji" data-action="emoji">😂 Add EZ Reaction</button>
-      `;
+      // Other user's message - show no options (menu will be empty)
+      actionsMenu.innerHTML = ``;
     }
     
-    bubble.appendChild(actionsMenu);
+    // Only add menu if there are options
+    if (actionsMenu.innerHTML.trim() !== '') {
+      bubble.appendChild(actionsMenu);
+    }
     
     // Setup event listeners for this message
-    setupMessageEvents(bubble, messageId, m);
+    if (actionsMenu.innerHTML.trim() !== '') {
+      setupMessageEvents(bubble, messageId, m);
+    }
     
     // name click -> open profile  
     const nameElement = bubble.querySelector('.name');
@@ -736,6 +737,8 @@
       if (e.target.classList.contains('msg-img')) return;
       
       const menu = bubble.querySelector('.message-actions');
+      if (!menu) return;
+      
       // Hide other menus
       document.querySelectorAll('.message-actions.show').forEach(m => m.classList.remove('show'));
       menu.classList.add('show');
@@ -786,9 +789,6 @@
         e.preventDefault();
         
         switch(action) {
-          case 'copy':
-            copyText(message.text || '');
-            break;
           case 'edit':
             editMessage(messageId, message);
             break;
@@ -797,9 +797,6 @@
             break;
           case 'delete-all':
             deleteMessageForEveryone(messageId);
-            break;
-          case 'emoji':
-            addEmojiReaction(messageId, message);
             break;
         }
         
@@ -820,15 +817,6 @@
     }, 10);
   }
 
-  /* Copy text function */
-  function copyText(text) {
-    navigator.clipboard.writeText(text).then(() => {
-      showToast('Text copied to clipboard!');
-    }).catch(() => {
-      showToast('Failed to copy text');
-    });
-  }
-
   /* Edit message function */
   function editMessage(messageId, message) {
     currentEditingMessageId = messageId;
@@ -836,34 +824,6 @@
     const row = document.querySelector(`[data-message-id="${messageId}"]`);
     if (row) row.remove();
     renderMessage(message, messageId);
-  }
-
-  /* Add emoji reaction */
-  async function addEmojiReaction(messageId, message) {
-    try {
-      const currentReactions = message.reactions || {};
-      
-      // Check if user already reacted
-      if (currentReactions[uid]) {
-        showToast('You already added EZ reaction!');
-        return;
-      }
-      
-      // Add user to reactions
-      currentReactions[uid] = {
-        name: displayName,
-        time: Date.now()
-      };
-      
-      await update(ref(db, `messages/${messageId}`), {
-        reactions: currentReactions
-      });
-      
-      showToast('EZ reaction added!');
-    } catch(err) {
-      console.error('Failed to add reaction:', err);
-      showToast('Failed to add reaction');
-    }
   }
 
   /* Setup edit mode for a message */
@@ -1001,4 +961,4 @@
   })();  
   </script>
 </body>
-  </html>
+      </html>
