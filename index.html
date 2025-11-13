@@ -2,53 +2,70 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <title>Global Chat</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    background: linear-gradient(135deg, #0f0f0f, #1c1c1c);
+    background: #0f0f0f;
     color: white;
     font-family: 'Poppins', sans-serif;
     height: 100vh;
     display: flex;
     flex-direction: column;
   }
+
   header {
     background: #181818;
-    padding: 10px 15px;
+    padding: 8px 12px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     box-shadow: 0 2px 10px rgba(0,0,0,0.4);
   }
-  header h1 { font-size: 18px; color: #00ffe0; }
+  header h1 {
+    font-size: 16px;
+    color: #00ffe0;
+  }
   #profileBtn {
     background: none;
     border: 1px solid #00ffe0;
     color: #00ffe0;
-    border-radius: 6px;
-    padding: 5px 10px;
+    border-radius: 5px;
+    padding: 4px 8px;
+    font-size: 12px;
   }
+
   #chat-container {
     flex: 1;
     overflow-y: auto;
     padding: 10px;
+    font-size: 14px;
   }
   .msg {
-    background: #252525;
-    margin: 8px 0;
-    padding: 10px;
-    border-radius: 10px;
+    background: #202020;
+    margin: 6px 0;
+    padding: 8px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
     word-wrap: break-word;
+  }
+  .msg img {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    margin-right: 6px;
   }
   .msg strong {
     color: #00ffe0;
+    margin-right: 4px;
   }
+
   #input-area {
     display: flex;
     background: #181818;
-    padding: 8px;
+    padding: 6px;
   }
   #msgInput {
     flex: 1;
@@ -56,50 +73,61 @@
     outline: none;
     background: #0f0f0f;
     color: white;
-    padding: 10px;
-    border-radius: 6px;
+    padding: 8px;
+    border-radius: 5px;
+    font-size: 14px;
   }
   #sendBtn {
-    margin-left: 8px;
+    margin-left: 6px;
     background: #00ffe0;
     border: none;
     color: black;
-    padding: 10px 15px;
-    border-radius: 6px;
+    padding: 8px 12px;
+    border-radius: 5px;
     font-weight: bold;
+    font-size: 14px;
   }
+
+  /* Profile Modal */
   #profileModal {
     display: none;
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.8);
+    background: rgba(0,0,0,0.85);
     justify-content: center;
     align-items: center;
   }
   #profileBox {
     background: #1c1c1c;
-    padding: 20px;
-    border-radius: 10px;
+    padding: 16px;
+    border-radius: 8px;
     width: 90%;
-    max-width: 350px;
+    max-width: 300px;
+  }
+  #profileBox h3 {
+    text-align: center;
+    margin-bottom: 10px;
   }
   #profileBox input {
     width: 100%;
     margin: 5px 0;
-    padding: 10px;
+    padding: 8px;
     background: #0f0f0f;
     border: 1px solid #00ffe0;
     color: white;
-    border-radius: 6px;
+    border-radius: 5px;
+    font-size: 14px;
   }
   #saveProfile {
     background: #00ffe0;
     border: none;
-    padding: 10px;
-    border-radius: 6px;
+    padding: 8px;
+    border-radius: 5px;
     width: 100%;
     color: black;
     font-weight: bold;
+    font-size: 14px;
+    margin-top: 6px;
   }
 </style>
 </head>
@@ -163,13 +191,19 @@
     localStorage.setItem("avatar", avatar);
   }
 
-  profileBtn.onclick = () => profileModal.style.display = "flex";
+  profileBtn.onclick = () => {
+    profileModal.style.display = "flex";
+    nameInput.value = username;
+    avatarInput.value = avatar;
+  };
+
   saveProfile.onclick = () => {
     username = nameInput.value.trim() || "Guest";
     avatar = avatarInput.value.trim();
     updateProfile();
     profileModal.style.display = "none";
   };
+
   profileModal.onclick = (e) => {
     if (e.target === profileModal) profileModal.style.display = "none";
   };
@@ -191,8 +225,8 @@
     const div = document.createElement("div");
     div.className = "msg";
     div.innerHTML = `
-      ${val.avatar ? `<img src="${val.avatar}" style="width:25px;height:25px;border-radius:50%;vertical-align:middle;margin-right:5px;">` : ""}
-      <strong>${val.user}</strong>: ${val.text}
+      ${val.avatar ? `<img src="${val.avatar}" alt="">` : ""}
+      <strong>${val.user}</strong> ${val.text}
     `;
     chatContainer.appendChild(div);
     chatContainer.scrollTop = chatContainer.scrollHeight;
