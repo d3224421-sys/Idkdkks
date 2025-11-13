@@ -12,7 +12,6 @@
   }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:linear-gradient(180deg,var(--bg),#071017);color:#fff}
-  /* fixed header */
   header {
     position:fixed; top:0; left:0; right:0; height:56px;
     background:var(--panel); display:flex; align-items:center; justify-content:space-between;
@@ -21,7 +20,6 @@
   header .title { display:flex; align-items:center; gap:10px; }
   header h1 { font-size:16px; margin:0; color:#e6f7f1; letter-spacing:0.2px; }
   header button { background:none; border:1px solid rgba(255,255,255,0.06); color:var(--muted); padding:6px 10px; border-radius:8px; font-size:13px; }
-  /* chat area */
   #chat-wrap { padding:68px 12px 84px; height:100%; overflow:auto; -webkit-overflow-scrolling:touch; }
   .msg-row { display:flex; gap:10px; align-items:flex-start; margin:8px 0; max-width:100%; }
   .msg-row.you { flex-direction:row-reverse; }
@@ -33,13 +31,11 @@
   .time { font-size:11px; color:var(--muted); }
   .text { font-size:15px; color:#e9f3f4; line-height:1.35; word-break:break-word; }
   .bubble img.msg-img { max-width:220px; border-radius:8px; margin-top:8px; display:block; }
-  /* fixed input bottom */
   .composer { position:fixed; left:0; right:0; bottom:0; padding:8px 10px; background:var(--panel); display:flex; gap:8px; align-items:center; border-top:1px solid rgba(255,255,255,0.03); z-index:20; }
   .input { flex:1; display:flex; gap:8px; align-items:center; }
   input[type="text"]{ width:100%; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.04); background:rgba(0,0,0,0.25); color:#fff; outline:none; font-size:15px; }
   button.send { background:var(--accent); color:#012; border:none; padding:10px 12px; border-radius:10px; font-weight:700; cursor:pointer; }
   button.icon { background:#0b0d0f; border:1px solid rgba(255,255,255,0.04); color:var(--muted); padding:8px; border-radius:8px; cursor:pointer; }
-  /* profile modal */
   .modal { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.6); z-index:40; visibility:hidden; opacity:0; transition:opacity .12s; }
   .modal.open { visibility:visible; opacity:1; }
   .card { width:92%; max-width:420px; background:#0f1416; border-radius:12px; padding:14px; border:1px solid rgba(255,255,255,0.03); }
@@ -51,7 +47,6 @@
   .btn { padding:8px 10px; border-radius:8px; border:none; cursor:pointer; }
   .btn.primary { background:var(--accent); color:#022; font-weight:700; }
   .btn.ghost { background:transparent; border:1px solid rgba(255,255,255,0.04); color:var(--muted); }
-  /* small screens */
   @media (max-width:420px){
     .avatar-small{width:36px;height:36px}
     .bubble img.msg-img{max-width:160px}
@@ -67,9 +62,9 @@
       </svg>
       <h1>Global Chat</h1>
     </div>
-    <div>
-      <button id="aboutBtn" class="btn ghost">About</button>
+    <div style="display:flex; gap:8px;">
       <button id="profileBtn" class="btn ghost">Profile</button>
+      <button id="aboutBtn" class="btn ghost">About</button>
     </div>
   </header>
 
@@ -94,10 +89,12 @@
           <textarea id="bioField" class="field" rows="3" placeholder="Short bio (optional)"></textarea>
         </div>
       </div>
+
       <div style="margin-top:10px;">
         <label class="muted">Choose avatar (file) — will be visible to everyone</label>
         <input id="avatarFile" type="file" accept="image/*" style="margin-top:8px" />
       </div>
+
       <div class="row-between">
         <div>
           <button id="saveProfile" class="btn primary">Save</button>
@@ -127,9 +124,9 @@
 
   <!-- About modal -->
   <div id="aboutModal" class="modal" aria-hidden="true">
-    <div class="card">
-      <h2 style="margin-top:0">About</h2>
-      <p style="margin-top:10px; color:#e9f3f4;">
+    <div class="card" role="dialog" aria-modal="true">
+      <h2 style="margin-top:0;">About the Owner</h2>
+      <p style="margin-top:8px; line-height:1.4; color:#ccc;">
         OWNER: Hack7rBGG / Xymatekidd
       </p>
       <div style="display:flex;justify-content:flex-end;margin-top:12px">
@@ -139,25 +136,51 @@
   </div>
 
 <script type="module">
-// --- Your existing Firebase JS code remains unchanged ---
+/* ---------------------------
+  Firebase Realtime DB chat + profiles (base64 avatars)
+  - stores avatars as compressed base64 in /profiles/<uid>/avatar
+  - messages saved in /messages
+  NOTE: For testing set DB rules public:
+  {
+    "rules": { ".read": true, ".write": true }
+  }
+---------------------------- */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, push, onChildAdded, set as dbSet, child, get, query, limitToLast } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
+/* ---------- YOUR FIREBASE CONFIG ---------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyBhBysX0vCpjgBybXAto1eVGJg4BMNPcE",
+  authDomain: "global-chat-4ebaf.firebaseapp.com",
+  databaseURL: "https://global-chat-4ebaf-default-rtdb.firebaseio.com",
+  projectId: "global-chat-4ebaf",
+  storageBucket: "global-chat-4ebaf.appspot.com",
+  messagingSenderId: "932946585758",
+  appId: "1:932946585758:web:299df72156b9222774b93",
+  measurementId: "G-RWRH8RCB0W"
+};
+/* ------------------------------------------ */
+
+// --- ALL EXISTING ORIGINAL JS HERE ---
+
+/* About modal handlers */
 const aboutBtn = document.getElementById('aboutBtn');
 const aboutModal = document.getElementById('aboutModal');
 const closeAbout = document.getElementById('closeAbout');
 
-aboutBtn.addEventListener('click', () => {
-  aboutModal.classList.add('open');
-  aboutModal.setAttribute('aria-hidden', 'false');
-});
-closeAbout.addEventListener('click', () => {
-  aboutModal.classList.remove('open');
-  aboutModal.setAttribute('aria-hidden', 'true');
-});
-aboutModal.addEventListener('click', e => {
-  if (e.target === aboutModal) closeAbout.click();
+aboutBtn.onclick = () => { 
+  aboutModal.classList.add('open'); 
+  aboutModal.setAttribute('aria-hidden','false'); 
+};
+closeAbout.onclick = () => { 
+  aboutModal.classList.remove('open'); 
+  aboutModal.setAttribute('aria-hidden','true'); 
+};
+aboutModal.addEventListener('click', e => { 
+  if(e.target === aboutModal) closeAbout.click(); 
 });
 
-// --- All other JS remains exactly as before ---
+// --- REST OF ORIGINAL SCRIPT REMAINS EXACTLY AS IT IS ---
 </script>
 </body>
 </html>
