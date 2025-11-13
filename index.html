@@ -118,6 +118,7 @@
     flex-direction: column;
     overflow: hidden;
     z-index: 10;
+    min-width: 180px;
   }
   
   .message-actions.show {
@@ -128,7 +129,7 @@
     background: none;
     border: none;
     color: #fff;
-    padding: 10px 16px;
+    padding: 12px 16px;
     text-align: left;
     cursor: pointer;
     font-size: 14px;
@@ -136,6 +137,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    width: 100%;
   }
   
   .message-action:last-child {
@@ -156,6 +158,10 @@
   
   .message-action.copy {
     color: #4dabf7;
+  }
+  
+  .message-action.emoji {
+    color: #ffd700;
   }
   
   /* Edit message input */
@@ -223,6 +229,23 @@
     opacity: 1;
   }
   
+  /* Emoji reaction */
+  .emoji-reaction {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255,255,255,0.1);
+    padding: 4px 8px;
+    border-radius: 12px;
+    margin-top: 4px;
+    font-size: 12px;
+  }
+  
+  .emoji-reaction img {
+    width: 16px;
+    height: 16px;
+  }
+  
   /* small screens */
   @media (max-width:420px){
     .avatar-small{width:36px;height:36px}
@@ -233,6 +256,7 @@
     }
     .message-actions {
       right: 5px;
+      min-width: 160px;
     }
   }
 </style>
@@ -402,6 +426,7 @@
   /* Message actions state */
   let currentEditingMessageId = null;
   let scrollPosition = null;
+  const EMOJI_URL = "https://files.catbox.moe/gvhwqz.jpeg";
     
   /* init UI with stored profile */  
   function refreshProfileUI(){  
@@ -518,7 +543,8 @@
       image: imageDataUrl || null,  
       time: Date.now(),  
       edited: false,
-      deleted: false
+      deleted: false,
+      reactions: {}
     };  
     try {  
       await push(ref(db, 'messages'), payload);  
@@ -614,6 +640,15 @@
     const nameHtml = `<span class="name" data-uid="${escapeHtml(m.uid)}">${escapeHtml(m.name || 'User')}</span>`;  
     const imageHtml = m.image ? `<img class="msg-img" src="${escapeHtml(m.image)}" alt="img">` : '';  
     
+    // Reactions display
+    let reactionsHtml = '';
+    if (m.reactions && Object.keys(m.reactions).length > 0) {
+      reactionsHtml = `<div class="emoji-reaction">
+        <img src="${EMOJI_URL}" alt="EZ">
+        <span>${Object.keys(m.reactions).length}</span>
+      </div>`;
+    }
+    
     // Check if this message is being edited
     let messageContent = '';
     if (currentEditingMessageId === messageId) {
@@ -636,6 +671,7 @@
       </div>
       ${messageContent}
       ${imageHtml}
+      ${reactionsHtml}
     `;
     
     // Add message actions menu
@@ -645,15 +681,16 @@
     if (m.uid === uid) {
       // User's own message - show all options
       actionsMenu.innerHTML = `
-        <button class="message-action copy">📋 Copy Text</button>
-        <button class="message-action edit">✏️ Edit</button>
-        <button class="message-action delete">🗑️ Delete for me</button>
-        <button class="message-action delete">🚫 Delete for everyone</button>
+        <button class="message-action copy" data-action="copy">📋 Copy Text</button>
+        <button class="message-action edit" data-action="edit">✏️ Edit</button>
+        <button class="message-action delete" data-action="delete-me">🗑️ Delete for me</button>
+        <button class="message-action delete" data-action="delete-all">🚫 Delete for everyone</button>
       `;
     } else {
-      // Other user's message - show only copy option
+      // Other user's message - show copy and emoji options
       actionsMenu.innerHTML = `
-        <button class="message-action copy">📋 Copy Text</button>
+        <button class="message-action copy" data-action="copy">📋 Copy Text</button>
+        <button class="message-action emoji" data-action="emoji">😂 Add EZ Reaction</button>
       `;
     }
     
@@ -694,7 +731,10 @@
   function setupMessageEvents(bubble, messageId, message) {
     let pressTimer;
     
-    const showMenu = () => {
+    const showMenu = (e) => {
+      // Don't show menu on images
+      if (e.target.classList.contains('msg-img')) return;
+      
       const menu = bubble.querySelector('.message-actions');
       // Hide other menus
       document.querySelectorAll('.message-actions.show').forEach(m => m.classList.remove('show'));
@@ -707,7 +747,7 @@
     // Mouse events
     bubble.addEventListener('mousedown', (e) => {
       e.preventDefault();
-      pressTimer = setTimeout(showMenu, 500);
+      pressTimer = setTimeout(() => showMenu(e), 500);
     });
     
     bubble.addEventListener('mouseup', () => clearTimeout(pressTimer));
@@ -716,7 +756,7 @@
     // Touch events
     bubble.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      pressTimer = setTimeout(showMenu, 500);
+      pressTimer = setTimeout(() => showMenu(e), 500);
     });
     
     bubble.addEventListener('touchend', () => clearTimeout(pressTimer));
@@ -725,69 +765,52 @@
     // Right click
     bubble.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      showMenu();
+      showMenu(e);
     });
   }
 
   /* Setup menu button actions */
   function setupMenuActions(menu, messageId, message) {
-    const copyBtn = menu.querySelector('.message-action.copy');
-    const editBtn = menu.querySelector('.message-action.edit');
-    const deleteBtns = menu.querySelectorAll('.message-action.delete');
+    // Remove any existing event listeners by cloning the menu
+    const newMenu = menu.cloneNode(true);
+    menu.parentNode.replaceChild(newMenu, menu);
     
-    // Copy text
-    if (copyBtn) {
-      copyBtn.onclick = (e) => {
-        e.stopPropagation();
-        navigator.clipboard.writeText(message.text || '').then(() => {
-          showToast('Text copied to clipboard!');
-        }).catch(() => {
-          showToast('Failed to copy text');
-        });
-        menu.classList.remove('show');
-      };
-    }
+    // Get fresh button references
+    const buttons = newMenu.querySelectorAll('.message-action');
     
-    // Edit message
-    if (editBtn) {
-      editBtn.onclick = (e) => {
-        e.stopPropagation();
-        currentEditingMessageId = messageId;
-        // Re-render the message in edit mode
-        const row = document.querySelector(`[data-message-id="${messageId}"]`);
-        if (row) row.remove();
-        renderMessage(message, messageId);
-        menu.classList.remove('show');
-      };
-    }
-    
-    // Delete buttons
-    if (deleteBtns.length > 0) {
-      // Delete for me
-      deleteBtns[0].onclick = (e) => {
-        e.stopPropagation();
-        if (confirm('Delete this message for yourself?')) {
-          deleteMessageForMe(messageId);
-        }
-        menu.classList.remove('show');
-      };
+    buttons.forEach(button => {
+      const action = button.dataset.action;
       
-      // Delete for everyone
-      if (deleteBtns[1]) {
-        deleteBtns[1].onclick = (e) => {
-          e.stopPropagation();
-          if (confirm('Delete this message for everyone? This cannot be undone.')) {
+      button.onclick = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        
+        switch(action) {
+          case 'copy':
+            copyText(message.text || '');
+            break;
+          case 'edit':
+            editMessage(messageId, message);
+            break;
+          case 'delete-me':
+            deleteMessageForMe(messageId);
+            break;
+          case 'delete-all':
             deleteMessageForEveryone(messageId);
-          }
-          menu.classList.remove('show');
-        };
-      }
-    }
+            break;
+          case 'emoji':
+            addEmojiReaction(messageId, message);
+            break;
+        }
+        
+        newMenu.classList.remove('show');
+      };
+    });
     
     // Close menu when clicking outside
     const closeMenu = (e) => {
-      if (!menu.contains(e.target)) {
-        menu.classList.remove('show');
+      if (!newMenu.contains(e.target)) {
+        newMenu.classList.remove('show');
         document.removeEventListener('click', closeMenu);
       }
     };
@@ -795,6 +818,52 @@
     setTimeout(() => {
       document.addEventListener('click', closeMenu);
     }, 10);
+  }
+
+  /* Copy text function */
+  function copyText(text) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('Text copied to clipboard!');
+    }).catch(() => {
+      showToast('Failed to copy text');
+    });
+  }
+
+  /* Edit message function */
+  function editMessage(messageId, message) {
+    currentEditingMessageId = messageId;
+    // Re-render the message in edit mode
+    const row = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (row) row.remove();
+    renderMessage(message, messageId);
+  }
+
+  /* Add emoji reaction */
+  async function addEmojiReaction(messageId, message) {
+    try {
+      const currentReactions = message.reactions || {};
+      
+      // Check if user already reacted
+      if (currentReactions[uid]) {
+        showToast('You already added EZ reaction!');
+        return;
+      }
+      
+      // Add user to reactions
+      currentReactions[uid] = {
+        name: displayName,
+        time: Date.now()
+      };
+      
+      await update(ref(db, `messages/${messageId}`), {
+        reactions: currentReactions
+      });
+      
+      showToast('EZ reaction added!');
+    } catch(err) {
+      console.error('Failed to add reaction:', err);
+      showToast('Failed to add reaction');
+    }
   }
 
   /* Setup edit mode for a message */
@@ -850,6 +919,8 @@
   
   /* Delete message for me only */
   async function deleteMessageForMe(messageId) {
+    if (!confirm('Delete this message for yourself?')) return;
+    
     try {
       await remove(ref(db, `messages/${messageId}`));
     } catch(err) {
@@ -860,6 +931,8 @@
   
   /* Delete message for everyone */
   async function deleteMessageForEveryone(messageId) {
+    if (!confirm('Delete this message for everyone? This cannot be undone.')) return;
+    
     try {
       await update(ref(db, `messages/${messageId}`), {
         deleted: true,
