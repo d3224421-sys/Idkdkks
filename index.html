@@ -1,12 +1,18 @@
 <!DOCTYPE html>
 <html>
-  <body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Firebase Test</title>
+  </head>
+  <body style="font-family:Arial; text-align:center; padding-top:40px;">
     <h3>Firebase test</h3>
-    <pre id="out"></pre>
+    <div id="out">Checking...</div>
 
-    <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-database.js"></script>
-    <script>
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+      import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
       const firebaseConfig = {
         apiKey: "AIzaSyBhBysX0vCpjgBybXAto1eVGJg4BMNPcE",
         authDomain: "global-chat-4ebaf.firebaseapp.com",
@@ -16,12 +22,15 @@
         messagingSenderId: "932946585758",
         appId: "1:932946585758:web:299df72156b9222774b93"
       };
-      const app = firebase.initializeApp(firebaseConfig);
-      const db = firebase.database();
-      db.ref(".info/connected").on("value", s => {
-        document.getElementById("out").textContent = s.val()
-          ? "✅ Connected to Firebase"
-          : "❌ Not connected";
+
+      const app = initializeApp(firebaseConfig);
+      const db = getDatabase(app);
+
+      const out = document.getElementById("out");
+      const connRef = ref(db, ".info/connected");
+
+      onValue(connRef, (snap) => {
+        out.textContent = snap.val() ? "✅ Connected to Firebase" : "❌ Not connected";
       });
     </script>
   </body>
