@@ -401,7 +401,6 @@
     
   /* Message actions state */
   let currentEditingMessageId = null;
-  let messageActionsMenu = null;
   let scrollPosition = null;
     
   /* init UI with stored profile */  
@@ -571,7 +570,11 @@
   onChildChanged(lastQ, snap => {
     const m = snap.val();
     if (!m) return;
-    updateMessageUI(m, snap.key);
+    const existingMessage = document.querySelector(`[data-message-id="${snap.key}"]`);
+    if (existingMessage && currentEditingMessageId !== snap.key) {
+      existingMessage.remove();
+      renderMessage(m, snap.key);
+    }
   });
 
   // Listen for message deletions
@@ -586,7 +589,7 @@
   function renderMessage(m, messageId){  
     // Check if message already exists
     const existingMessage = document.querySelector(`[data-message-id="${messageId}"]`);
-    if (existingMessage) {
+    if (existingMessage && currentEditingMessageId !== messageId) {
       existingMessage.remove();
     }
 
@@ -635,12 +638,12 @@
       ${imageHtml}
     `;
     
-    // Add message actions menu for all messages
+    // Add message actions menu
     const actionsMenu = document.createElement('div');
     actionsMenu.className = 'message-actions';
     
     if (m.uid === uid) {
-      // User's own message - show edit and delete options
+      // User's own message - show all options
       actionsMenu.innerHTML = `
         <button class="message-action copy">📋 Copy Text</button>
         <button class="message-action edit">✏️ Edit</button>
@@ -657,10 +660,11 @@
     bubble.appendChild(actionsMenu);
     
     // Setup event listeners for this message
-    setupMessageEventListeners(bubble, actionsMenu, messageId, m);
+    setupMessageEvents(bubble, messageId, m);
     
     // name click -> open profile  
-    bubble.querySelectorAll('.name').forEach(n => n.addEventListener('click', ()=> openProfile(n.dataset.uid)));  
+    const nameElement = bubble.querySelector('.name');
+    nameElement.addEventListener('click', ()=> openProfile(nameElement.dataset.uid));
     
     // Edit button handlers if in edit mode
     if (currentEditingMessageId === messageId) {
@@ -686,139 +690,55 @@
     while (chatWrap.children.length > 800) chatWrap.removeChild(chatWrap.firstChild);  
   }
 
-  /* Update existing message UI without recreating */
-  function updateMessageUI(m, messageId) {
-    const existingRow = document.querySelector(`[data-message-id="${messageId}"]`);
-    if (!existingRow) return;
-    
-    // Don't update if we're currently editing this message
-    if (currentEditingMessageId === messageId) return;
-    
-    // Update the message content
-    const bubble = existingRow.querySelector('.bubble');
-    const time = new Date(m.time || Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-    const nameHtml = `<span class="name" data-uid="${escapeHtml(m.uid)}">${escapeHtml(m.name || 'User')}</span>`;
-    const imageHtml = m.image ? `<img class="msg-img" src="${escapeHtml(m.image)}" alt="img">` : '';
-    
-    bubble.innerHTML = `
-      <div class="meta">
-        <div>${nameHtml}</div>
-        <div class="time">${time} ${m.edited ? '✏️' : ''}</div>
-      </div>
-      <div class="text" style="user-select: none; -webkit-user-select: none;">${escapeHtml(m.text||'')} ${m.edited ? '<span style="font-size:11px;color:var(--muted);">(edited)</span>' : ''}</div>
-      ${imageHtml}
-    `;
-    
-    // Re-add actions menu
-    const actionsMenu = document.createElement('div');
-    actionsMenu.className = 'message-actions';
-    
-    if (m.uid === uid) {
-      actionsMenu.innerHTML = `
-        <button class="message-action copy">📋 Copy Text</button>
-        <button class="message-action edit">✏️ Edit</button>
-        <button class="message-action delete">🗑️ Delete for me</button>
-        <button class="message-action delete">🚫 Delete for everyone</button>
-      `;
-    } else {
-      actionsMenu.innerHTML = `
-        <button class="message-action copy">📋 Copy Text</button>
-      `;
-    }
-    
-    bubble.appendChild(actionsMenu);
-    
-    // Re-setup event listeners
-    setupMessageEventListeners(bubble, actionsMenu, messageId, m);
-    bubble.querySelectorAll('.name').forEach(n => n.addEventListener('click', ()=> openProfile(n.dataset.uid)));
-  }
-
-  /* Setup event listeners for message actions */
-  function setupMessageEventListeners(bubble, menu, messageId, message) {
-    // Add hold to show menu functionality
+  /* Setup event listeners for message */
+  function setupMessageEvents(bubble, messageId, message) {
     let pressTimer;
-    const showMenuHandler = (e) => {
-      // Prevent text selection
-      e.preventDefault();
-      e.stopPropagation();
+    
+    const showMenu = () => {
+      const menu = bubble.querySelector('.message-actions');
+      // Hide other menus
+      document.querySelectorAll('.message-actions.show').forEach(m => m.classList.remove('show'));
+      menu.classList.add('show');
       
-      pressTimer = setTimeout(() => {
-        showMessageActions(menu, messageId, message);
-      }, 500); // Show after 500ms hold
+      // Setup menu button actions
+      setupMenuActions(menu, messageId, message);
     };
     
     // Mouse events
-    bubble.addEventListener('mousedown', showMenuHandler);
+    bubble.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      pressTimer = setTimeout(showMenu, 500);
+    });
+    
     bubble.addEventListener('mouseup', () => clearTimeout(pressTimer));
     bubble.addEventListener('mouseleave', () => clearTimeout(pressTimer));
     
-    // Touch events for mobile
-    bubble.addEventListener('touchstart', showMenuHandler);
+    // Touch events
+    bubble.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      pressTimer = setTimeout(showMenu, 500);
+    });
+    
     bubble.addEventListener('touchend', () => clearTimeout(pressTimer));
     bubble.addEventListener('touchcancel', () => clearTimeout(pressTimer));
     
     // Right click
     bubble.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      showMessageActions(menu, messageId, message);
+      showMenu();
     });
   }
 
-  /* Setup edit mode for a message */
-  function setupEditMode(bubble, messageId, message) {
-    const editInput = bubble.querySelector('.edit-input');
-    const saveBtn = bubble.querySelector('.edit-save');
-    const cancelBtn = bubble.querySelector('.edit-cancel');
-    
-    const saveEdit = () => {
-      // Save scroll position before updating
-      scrollPosition = chatWrap.scrollTop;
-      updateMessage(messageId, editInput.value);
-    };
-    
-    const cancelEdit = () => {
-      currentEditingMessageId = null;
-      renderMessage(message, messageId); // Re-render without edit mode
-    };
-    
-    saveBtn.addEventListener('click', saveEdit);
-    cancelBtn.addEventListener('click', cancelEdit);
-    
-    editInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        saveEdit();
-      } else if (e.key === 'Escape') {
-        cancelEdit();
-      }
-    });
-    
-    editInput.focus();
-    editInput.select();
-  }
-  
-  /* Show message actions menu */
-  function showMessageActions(menu, messageId, message) {
-    // Hide any other open menus
-    document.querySelectorAll('.message-actions.show').forEach(m => {
-      m.classList.remove('show');
-    });
-    
-    menu.classList.add('show');
-    
-    // Position the menu
-    const rect = menu.parentElement.getBoundingClientRect();
-    menu.style.top = `${-10}px`;
-    menu.style.right = `${10}px`;
-    
-    // Setup event listeners for action buttons
+  /* Setup menu button actions */
+  function setupMenuActions(menu, messageId, message) {
     const copyBtn = menu.querySelector('.message-action.copy');
     const editBtn = menu.querySelector('.message-action.edit');
-    const deleteForMeBtn = menu.querySelectorAll('.message-action.delete')[0];
-    const deleteForEveryoneBtn = menu.querySelectorAll('.message-action.delete')[1];
+    const deleteBtns = menu.querySelectorAll('.message-action.delete');
     
-    // Copy text functionality
+    // Copy text
     if (copyBtn) {
-      copyBtn.onclick = () => {
+      copyBtn.onclick = (e) => {
+        e.stopPropagation();
         navigator.clipboard.writeText(message.text || '').then(() => {
           showToast('Text copied to clipboard!');
         }).catch(() => {
@@ -830,44 +750,85 @@
     
     // Edit message
     if (editBtn) {
-      editBtn.onclick = () => {
+      editBtn.onclick = (e) => {
+        e.stopPropagation();
         currentEditingMessageId = messageId;
+        // Re-render the message in edit mode
+        const row = document.querySelector(`[data-message-id="${messageId}"]`);
+        if (row) row.remove();
         renderMessage(message, messageId);
         menu.classList.remove('show');
       };
     }
     
-    // Delete for me only
-    if (deleteForMeBtn) {
-      deleteForMeBtn.onclick = () => {
+    // Delete buttons
+    if (deleteBtns.length > 0) {
+      // Delete for me
+      deleteBtns[0].onclick = (e) => {
+        e.stopPropagation();
         if (confirm('Delete this message for yourself?')) {
           deleteMessageForMe(messageId);
         }
         menu.classList.remove('show');
       };
-    }
-    
-    // Delete for everyone
-    if (deleteForEveryoneBtn) {
-      deleteForEveryoneBtn.onclick = () => {
-        if (confirm('Delete this message for everyone? This cannot be undone.')) {
-          deleteMessageForEveryone(messageId);
-        }
-        menu.classList.remove('show');
-      };
+      
+      // Delete for everyone
+      if (deleteBtns[1]) {
+        deleteBtns[1].onclick = (e) => {
+          e.stopPropagation();
+          if (confirm('Delete this message for everyone? This cannot be undone.')) {
+            deleteMessageForEveryone(messageId);
+          }
+          menu.classList.remove('show');
+        };
+      }
     }
     
     // Close menu when clicking outside
-    const closeMenuHandler = (e) => {
+    const closeMenu = (e) => {
       if (!menu.contains(e.target)) {
         menu.classList.remove('show');
-        document.removeEventListener('click', closeMenuHandler);
+        document.removeEventListener('click', closeMenu);
       }
     };
     
     setTimeout(() => {
-      document.addEventListener('click', closeMenuHandler);
+      document.addEventListener('click', closeMenu);
     }, 10);
+  }
+
+  /* Setup edit mode for a message */
+  function setupEditMode(bubble, messageId, message) {
+    const editInput = bubble.querySelector('.edit-input');
+    const saveBtn = bubble.querySelector('.edit-save');
+    const cancelBtn = bubble.querySelector('.edit-cancel');
+    
+    const saveEdit = () => {
+      scrollPosition = chatWrap.scrollTop;
+      updateMessage(messageId, editInput.value);
+    };
+    
+    const cancelEdit = () => {
+      currentEditingMessageId = null;
+      // Re-render without edit mode
+      const row = document.querySelector(`[data-message-id="${messageId}"]`);
+      if (row) row.remove();
+      renderMessage(message, messageId);
+    };
+    
+    saveBtn.onclick = saveEdit;
+    cancelBtn.onclick = cancelEdit;
+    
+    editInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        saveEdit();
+      } else if (e.key === 'Escape') {
+        cancelEdit();
+      }
+    });
+    
+    editInput.focus();
+    editInput.select();
   }
   
   /* Update message text */
@@ -890,7 +851,6 @@
   /* Delete message for me only */
   async function deleteMessageForMe(messageId) {
     try {
-      // Simply remove the message from the database
       await remove(ref(db, `messages/${messageId}`));
     } catch(err) {
       console.error('Failed to delete message:', err);
