@@ -231,6 +231,12 @@
   }
   
   /* Edit message input - SAME POSITION AS BEFORE */
+  .edit-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
   .edit-input {
     width: 100%;
     background: rgba(0,0,0,0.3);
@@ -239,13 +245,14 @@
     padding: 8px;
     color: #fff;
     font-size: 15px;
-    margin-top: 6px;
+    margin: 0;
+    font-family: inherit;
+    line-height: inherit;
   }
   
   .edit-buttons {
     display: flex;
     gap: 8px;
-    margin-top: 8px;
   }
   
   .edit-buttons button {
@@ -888,12 +895,84 @@
     }
   });
   
-  /* render message element - FIXED EDIT POSITION */  
+  /* render message element - FIXED EDIT POSITION (SAME AS OLD CODE) */  
   function renderMessage(m, messageId){  
     // Check if message already exists
     const existingMessage = document.querySelector(`[data-message-id="${messageId}"]`);
-    if (existingMessage) {
-      existingMessage.remove();
+    
+    // If we're editing this message and it already exists, DON'T recreate it
+    if (currentEditingMessageId === messageId && existingMessage) {
+      // Just update the existing message content without moving it
+      const bubble = existingMessage.querySelector('.bubble');
+      const time = new Date(m.time || Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});  
+      const nameHtml = `<span class="name" data-uid="${escapeHtml(m.uid)}">${escapeHtml(m.name || 'User')}</span>`;  
+      
+      // Handle emoji messages
+      let contentHtml = '';
+      if (m.isEmoji && m.image) {
+        contentHtml = `<img class="msg-img" src="${escapeHtml(m.image)}" alt="emoji" style="max-width: 100px;">`;
+      } else if (m.image) {
+        contentHtml = `<img class="msg-img" src="${escapeHtml(m.image)}" alt="img">`;
+      }
+      
+      // Handle reply
+      let replyHtml = '';
+      if (m.replyTo && m.replyToName) {
+        replyHtml = `<div class="reply-container" data-reply-to="${m.replyTo}">
+          <div class="reply-author">Replying to ${escapeHtml(m.replyToName)}</div>
+          <div class="reply-text">${escapeHtml(m.replyToText || '')}</div>
+        </div>`;
+      }
+      
+      // Update the bubble content for edit mode - SAME POSITION AS OLD CODE
+      bubble.innerHTML = `
+        <div class="meta">
+          <div>${nameHtml}</div>
+          <div class="time">${time} ${m.edited ? '✏️' : ''}</div>
+        </div>
+        ${replyHtml}
+        <div class="edit-container">
+          <input type="text" class="edit-input" value="${escapeHtml(m.text||'')}" />
+          <div class="edit-buttons">
+            <button class="edit-save">Save</button>
+            <button class="edit-cancel">Cancel</button>
+          </div>
+        </div>
+        ${contentHtml}
+      `;
+      
+      // Re-attach edit event handlers
+      const editInput = bubble.querySelector('.edit-input');
+      const saveBtn = bubble.querySelector('.edit-save');
+      const cancelBtn = bubble.querySelector('.edit-cancel');
+      
+      const saveEdit = () => {
+        updateMessage(messageId, editInput.value);
+      };
+      
+      const cancelEdit = () => {
+        currentEditingMessageId = null;
+        renderMessage(m, messageId); // Re-render without edit mode
+      };
+      
+      saveBtn.addEventListener('click', saveEdit);
+      cancelBtn.addEventListener('click', cancelEdit);
+      
+      editInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          saveEdit();
+        } else if (e.key === 'Escape') {
+          cancelEdit();
+        }
+      });
+      
+      // Focus and select after a small delay to ensure the element is rendered
+      setTimeout(() => {
+        editInput.focus();
+        editInput.select();
+      }, 10);
+      
+      return; // Stop here, don't create new element
     }
 
     // Don't render deleted messages
@@ -933,15 +1012,17 @@
       </div>`;
     }
     
-    // Check if this message is being edited - FIXED: Same position as before
+    // Check if this message is being edited - FIXED: Same position as old code
     let messageContent = '';
     if (currentEditingMessageId === messageId) {
-      // Show edit input in the same position as before
+      // Show edit input in the same position as old code
       messageContent = `
-        <input type="text" class="edit-input" value="${escapeHtml(m.text||'')}" />
-        <div class="edit-buttons">
-          <button class="edit-save">Save</button>
-          <button class="edit-cancel">Cancel</button>
+        <div class="edit-container">
+          <input type="text" class="edit-input" value="${escapeHtml(m.text||'')}" />
+          <div class="edit-buttons">
+            <button class="edit-save">Save</button>
+            <button class="edit-cancel">Cancel</button>
+          </div>
         </div>
       `;
     } else {
@@ -1077,7 +1158,7 @@
     // name click -> open profile  
     bubble.querySelectorAll('.name').forEach(n => n.addEventListener('click', ()=> openProfile(n.dataset.uid)));  
     
-    // Edit button handlers if in edit mode
+    // Edit button handlers if in edit mode (for new messages)
     if (currentEditingMessageId === messageId) {
       const editInput = bubble.querySelector('.edit-input');
       const saveBtn = bubble.querySelector('.edit-save');
@@ -1103,17 +1184,30 @@
         }
       });
       
-      editInput.focus();
-      editInput.select();
+      // Focus and select after a small delay to ensure the element is rendered
+      setTimeout(() => {
+        editInput.focus();
+        editInput.select();
+      }, 10);
     }
     
     row.appendChild(avatarEl);  
     row.appendChild(bubble);  
-    chatWrap.appendChild(row);  
+    
+    // If message already exists, replace it (except when editing)
+    if (existingMessage && currentEditingMessageId !== messageId) {
+      existingMessage.parentNode.replaceChild(row, existingMessage);
+    } else if (!existingMessage) {
+      chatWrap.appendChild(row);  
+    }
     
     // limit render length  
     while (chatWrap.children.length > 800) chatWrap.removeChild(chatWrap.firstChild);  
-    chatWrap.scrollTop = chatWrap.scrollHeight;  
+    
+    // Only scroll to bottom if it's a new message, not when editing
+    if (currentEditingMessageId !== messageId && !existingMessage) {
+      chatWrap.scrollTop = chatWrap.scrollHeight;
+    }
   }
   
   /* Show message actions menu */
@@ -1359,4 +1453,4 @@
   })();  
   </script>
 </body>
-        </html>
+  </html>
