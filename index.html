@@ -924,14 +924,14 @@
       // Different options for emoji vs text messages
       if (m.isEmoji) {
         actionsMenu.innerHTML = `
-          <button class="message-action delete">🗑️ Delete for me</button>
+          <button class="message-action delete">🗑️ Delete for me only</button>
           <button class="message-action delete">🚫 Delete for everyone</button>
         `;
       } else {
         actionsMenu.innerHTML = `
           <button class="message-action edit">✏️ Edit</button>
           <button class="message-action reply">↩️ Reply</button>
-          <button class="message-action delete">🗑️ Delete for me</button>
+          <button class="message-action delete">🗑️ Delete for me only</button>
           <button class="message-action delete">🚫 Delete for everyone</button>
         `;
       }
@@ -1115,7 +1115,7 @@
       const newDeleteForMeBtn = deleteForMeBtn.cloneNode(true);
       deleteForMeBtn.parentNode.replaceChild(newDeleteForMeBtn, deleteForMeBtn);
       newDeleteForMeBtn.addEventListener('click', () => {
-        if (confirm('Delete this message for yourself?')) {
+        if (confirm('Delete this message for yourself only?')) {
           deleteMessageForMe(messageId);
         }
         menu.classList.remove('show');
@@ -1203,22 +1203,25 @@
     }
   }
   
-  /* Delete message for me only */
+  /* Delete message for me only - ONLY REMOVES FROM MY VIEW */
   async function deleteMessageForMe(messageId) {
     try {
-      // Simply remove the message from the database
-      await remove(ref(db, `messages/${messageId}`));
+      // Just remove the message element from the DOM without touching Firebase
+      const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+      if (messageElement) {
+        messageElement.remove();
+      }
     } catch(err) {
-      console.error('Failed to delete message:', err);
-      alert('Failed to delete message');
+      console.error('Failed to delete message for me:', err);
+      alert('Failed to delete message for yourself');
     }
   }
   
-  /* Delete message for everyone - FIXED VERSION */
+  /* Delete message for everyone - ACTUALLY DELETES FROM FIREBASE */
   async function deleteMessageForEveryone(messageId) {
     try {
-      // Use update with the correct path structure
-      await update(ref(db, `messages/${messageId}`), {
+      const messageRef = ref(db, `messages/${messageId}`);
+      await update(messageRef, {
         deleted: true,
         text: '[This message was deleted]',
         image: null,
@@ -1296,4 +1299,4 @@
   })();  
   </script>
 </body>
-    </html>
+          </html>
