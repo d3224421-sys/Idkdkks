@@ -118,7 +118,6 @@
     flex-direction: column;
     overflow: hidden;
     z-index: 10;
-    min-width: 180px;
   }
   
   .message-actions.show {
@@ -129,7 +128,7 @@
     background: none;
     border: none;
     color: #fff;
-    padding: 12px 16px;
+    padding: 10px 16px;
     text-align: left;
     cursor: pointer;
     font-size: 14px;
@@ -137,7 +136,6 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    width: 100%;
   }
   
   .message-action:last-child {
@@ -200,51 +198,82 @@
     opacity: 0.7;
   }
   
-  /* Toast notification */
-  .toast {
+  /* Emoji picker styles */
+  .emoji-picker {
     position: fixed;
-    bottom: 80px;
-    left: 50%;
-    transform: translateX(-50%);
+    bottom: 70px;
+    left: 10px;
     background: var(--panel);
-    color: #fff;
-    padding: 12px 20px;
-    border-radius: 8px;
-    border: 1px solid rgba(255,255,255,0.1);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    z-index: 100;
-    opacity: 0;
-    transition: opacity 0.3s;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    padding: 12px;
+    z-index: 25;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 200px;
   }
   
-  .toast.show {
-    opacity: 1;
+  .emoji-picker.show {
+    display: flex;
   }
   
-  /* Emoji button */
-  .emoji-btn {
-    background: #0b0d0f;
-    border: 1px solid rgba(255,255,255,0.04);
+  .emoji-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  
+  .emoji-title {
+    font-size: 14px;
     color: var(--muted);
+  }
+  
+  .close-emoji {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px;
+  }
+  
+  .emoji-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     padding: 8px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 18px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
+    border: none;
+    background: none;
+    color: #fff;
+    text-align: left;
+    width: 100%;
   }
   
-  .emoji-btn img {
+  .emoji-item:hover {
+    background: rgba(255,255,255,0.05);
+  }
+  
+  .emoji-img {
     width: 24px;
     height: 24px;
-    object-fit: contain;
+    border-radius: 4px;
+    object-fit: cover;
   }
   
-  .emoji-btn:hover {
-    background: rgba(255,255,255,0.05);
+  .emoji-name {
+    font-size: 14px;
+  }
+  
+  /* Emoji icon in composer */
+  .emoji-icon {
+    width: 24px;
+    height: 24px;
+    object-fit: cover;
   }
   
   /* small screens */
@@ -257,15 +286,11 @@
     }
     .message-actions {
       right: 5px;
-      min-width: 160px;
     }
-    .emoji-btn {
-      width: 36px;
-      height: 36px;
-    }
-    .emoji-btn img {
-      width: 20px;
-      height: 20px;
+    .emoji-picker {
+      left: 8px;
+      right: 8px;
+      max-width: none;
     }
   }
 </style>
@@ -290,16 +315,25 @@
     <div class="input">
       <input id="messageInput" type="text" placeholder="Type a message..." autocomplete="off" />
     </div>
+    <button id="emojiBtn" class="icon" title="Emoji">
+      <img src="https://files.catbox.moe/bih7r4.png" class="emoji-icon" alt="Emoji" />
+    </button>
     <input id="fileInput" type="file" accept="image/*" style="display:none" />
     <button id="imgBtn" class="icon" title="Send image">📷</button>
-    <button id="emojiBtn" class="emoji-btn" title="Send EZ">
-      <img src="https://files.catbox.moe/gvhwqz.jpeg" alt="EZ" />
-    </button>
     <button id="sendBtn" class="send">Send</button>
   </div>
 
-  <!-- Toast notification -->
-  <div id="toast" class="toast"></div>
+  <!-- Emoji Picker -->
+  <div id="emojiPicker" class="emoji-picker">
+    <div class="emoji-header">
+      <div class="emoji-title">Emojis</div>
+      <button class="close-emoji">✕</button>
+    </div>
+    <button class="emoji-item" data-emoji="https://files.catbox.moe/gvhwqz.jpeg" data-name="EZ">
+      <img src="https://files.catbox.moe/gvhwqz.jpeg" class="emoji-img" alt="EZ" />
+      <span class="emoji-name">EZ</span>
+    </button>
+  </div>
 
   <!-- About page -->
   <div id="aboutPage">
@@ -403,9 +437,10 @@
   const messageInput = document.getElementById('messageInput');  
   const sendBtn = document.getElementById('sendBtn');  
   const imgBtn = document.getElementById('imgBtn');  
-  const emojiBtn = document.getElementById('emojiBtn');
   const fileInput = document.getElementById('fileInput');  
-  const toast = document.getElementById('toast');
+  const emojiBtn = document.getElementById('emojiBtn');  
+  const emojiPicker = document.getElementById('emojiPicker');  
+  const closeEmoji = document.querySelector('.close-emoji');  
     
   const aboutBtn = document.getElementById('aboutBtn');  
   const aboutPage = document.getElementById('aboutPage');  
@@ -438,7 +473,8 @@
     
   /* Message actions state */
   let currentEditingMessageId = null;
-  let scrollPosition = null;
+  let messageActionsMenu = null;
+  let scrollPositionBeforeEdit = 0;
     
   /* init UI with stored profile */  
   function refreshProfileUI(){  
@@ -452,15 +488,6 @@
   function defaultAvatarSVG(){  
     return 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='100%' height='100%' fill='%23121a1f'/><text x='50%' y='50%' fill='%23fff' font-size='22' text-anchor='middle' dominant-baseline='middle'>Avatar</text></svg>`);  
   }  
-
-  /* Show toast notification */
-  function showToast(message) {
-    toast.textContent = message;
-    toast.classList.add('show');
-    setTimeout(() => {
-      toast.classList.remove('show');
-    }, 2000);
-  }
     
   /* --- utility: compress image file to base64 (maxWidth, quality) --- */  
   function fileToCompressedDataURL(file, maxWidth=800, quality=0.7){  
@@ -514,6 +541,31 @@
   backBtn.onclick = () => { 
     aboutPage.classList.remove('active'); 
   };
+  
+  /* Emoji picker handlers */
+  emojiBtn.addEventListener('click', () => {
+    emojiPicker.classList.toggle('show');
+  });
+  
+  closeEmoji.addEventListener('click', () => {
+    emojiPicker.classList.remove('show');
+  });
+  
+  // Close emoji picker when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!emojiPicker.contains(e.target) && !emojiBtn.contains(e.target)) {
+      emojiPicker.classList.remove('show');
+    }
+  });
+  
+  // Emoji item click handler
+  document.querySelectorAll('.emoji-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const emojiUrl = item.dataset.emoji;
+      sendMessage(emojiUrl);
+      emojiPicker.classList.remove('show');
+    });
+  });
     
   /* profile modal handlers */  
   profileBtn.onclick = () => { profileModal.classList.add('open'); profileModal.setAttribute('aria-hidden','false'); refreshProfileUI(); };  
@@ -543,23 +595,27 @@
   });  
     
   /* --- send message (text or with uploaded image) --- */  
-  async function sendMessage(imageDataUrl = null, emojiText = null){  
-    const text = emojiText || (messageInput.value || '').trim();  
+  async function sendMessage(imageDataUrl = null){  
+    const text = (messageInput.value || '').trim();  
     if (!text && !imageDataUrl) return;  
+    
+    // Check if it's an emoji URL
+    const isEmoji = imageDataUrl && imageDataUrl.includes('catbox.moe');
+    
     const payload = {  
       uid,  
       name: displayName,  
       avatar: displayAvatar || '',  
       bio: displayBio || '',  
-      text: text || '',  
+      text: isEmoji ? '' : text,  
       image: imageDataUrl || null,  
       time: Date.now(),  
       edited: false,
-      deleted: false
+      deleted: false,
+      isEmoji: !!isEmoji
     };  
     try {  
       await push(ref(db, 'messages'), payload);  
-      // Clear the input field after sending
       messageInput.value = '';  
     } catch(err){  
       console.error('send failed', err);  
@@ -569,16 +625,7 @@
     
   /* send button */  
   sendBtn.addEventListener('click', ()=> sendMessage());  
-  messageInput.addEventListener('keydown', e=> { 
-    if (e.key === 'Enter') {
-      sendMessage();
-    }
-  });  
-  
-  /* emoji button */
-  emojiBtn.addEventListener('click', ()=> {
-    sendMessage(null, 'EZ');
-  });
+  messageInput.addEventListener('keydown', e=> { if (e.key === 'Enter') sendMessage(); });  
     
   /* image send via file chooser (compress -> send) */  
   imgBtn.addEventListener('click', ()=> fileInput.click());  
@@ -617,11 +664,7 @@
   onChildChanged(lastQ, snap => {
     const m = snap.val();
     if (!m) return;
-    const existingMessage = document.querySelector(`[data-message-id="${snap.key}"]`);
-    if (existingMessage && currentEditingMessageId !== snap.key) {
-      existingMessage.remove();
-      renderMessage(m, snap.key);
-    }
+    renderMessage(m, snap.key);
   });
 
   // Listen for message deletions
@@ -636,7 +679,7 @@
   function renderMessage(m, messageId){  
     // Check if message already exists
     const existingMessage = document.querySelector(`[data-message-id="${messageId}"]`);
-    if (existingMessage && currentEditingMessageId !== messageId) {
+    if (existingMessage) {
       existingMessage.remove();
     }
 
@@ -659,7 +702,14 @@
     
     const time = new Date(m.time || Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});  
     const nameHtml = `<span class="name" data-uid="${escapeHtml(m.uid)}">${escapeHtml(m.name || 'User')}</span>`;  
-    const imageHtml = m.image ? `<img class="msg-img" src="${escapeHtml(m.image)}" alt="img">` : '';  
+    
+    // Handle emoji messages
+    let contentHtml = '';
+    if (m.isEmoji && m.image) {
+      contentHtml = `<img class="msg-img" src="${escapeHtml(m.image)}" alt="emoji" style="max-width: 100px;">`;
+    } else if (m.image) {
+      contentHtml = `<img class="msg-img" src="${escapeHtml(m.image)}" alt="img">`;
+    }
     
     // Check if this message is being edited
     let messageContent = '';
@@ -673,7 +723,7 @@
         </div>
       `;
     } else {
-      messageContent = `<div class="text" style="user-select: none; -webkit-user-select: none;">${escapeHtml(m.text||'')} ${m.edited ? '<span style="font-size:11px;color:var(--muted);">(edited)</span>' : ''}</div>`;
+      messageContent = `<div class="text">${escapeHtml(m.text||'')} ${m.edited ? '<span style="font-size:11px;color:var(--muted);">(edited)</span>' : ''}</div>`;
     }
     
     bubble.innerHTML = `
@@ -682,11 +732,11 @@
         <div class="time">${time} ${m.edited ? '✏️' : ''}</div>
       </div>
       ${messageContent}
-      ${imageHtml}
+      ${contentHtml}
     `;
     
-    // Add message actions menu for user's own messages
-    if (m.uid === uid) {
+    // Add message actions menu for user's own text messages (not emojis)
+    if (m.uid === uid && !m.deleted && !m.isEmoji) {
       const actionsMenu = document.createElement('div');
       actionsMenu.className = 'message-actions';
       actionsMenu.innerHTML = `
@@ -696,99 +746,110 @@
       `;
       bubble.appendChild(actionsMenu);
       
-      // Setup event listeners for the menu
-      setupMessageMenu(actionsMenu, messageId, m);
+      // Add click event for showing menu (removed long press)
+      bubble.addEventListener('click', (e) => {
+        // Don't show menu if clicking on links or other interactive elements
+        if (e.target.tagName === 'A' || e.target.classList.contains('name')) return;
+        
+        // Show menu on message click
+        showMessageActions(actionsMenu, messageId, m);
+      });
+      
+      bubble.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showMessageActions(actionsMenu, messageId, m);
+      });
     }
     
     // name click -> open profile  
-    const nameElement = bubble.querySelector('.name');
-    nameElement.addEventListener('click', ()=> openProfile(nameElement.dataset.uid));
+    bubble.querySelectorAll('.name').forEach(n => n.addEventListener('click', ()=> openProfile(n.dataset.uid)));  
     
     // Edit button handlers if in edit mode
     if (currentEditingMessageId === messageId) {
-      setupEditMode(bubble, messageId, m);
+      const editInput = bubble.querySelector('.edit-input');
+      const saveBtn = bubble.querySelector('.edit-save');
+      const cancelBtn = bubble.querySelector('.edit-cancel');
+      
+      const saveEdit = () => {
+        updateMessage(messageId, editInput.value);
+      };
+      
+      const cancelEdit = () => {
+        currentEditingMessageId = null;
+        // Restore scroll position after edit
+        setTimeout(() => {
+          chatWrap.scrollTop = scrollPositionBeforeEdit;
+        }, 50);
+        renderMessage(m, messageId); // Re-render without edit mode
+      };
+      
+      saveBtn.addEventListener('click', saveEdit);
+      cancelBtn.addEventListener('click', cancelEdit);
+      
+      editInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          saveEdit();
+        } else if (e.key === 'Escape') {
+          cancelEdit();
+        }
+      });
+      
+      editInput.focus();
+      editInput.select();
     }
     
     row.appendChild(avatarEl);  
     row.appendChild(bubble);  
     chatWrap.appendChild(row);  
     
-    // Setup hold to show menu for user's own messages
-    if (m.uid === uid) {
-      setupHoldToShowMenu(bubble, messageId, m);
-    }
-    
-    // Restore scroll position after edit if needed
-    if (scrollPosition !== null) {
-      chatWrap.scrollTop = scrollPosition;
-      scrollPosition = null;
-    }
-    
-    // Auto scroll to bottom only for new messages, not when editing
-    if (!currentEditingMessageId && messageId !== currentEditingMessageId) {
-      chatWrap.scrollTop = chatWrap.scrollHeight;
-    }
-    
     // limit render length  
     while (chatWrap.children.length > 800) chatWrap.removeChild(chatWrap.firstChild);  
+    
+    // Only scroll to bottom if it's a new message, not when editing
+    if (currentEditingMessageId !== messageId) {
+      chatWrap.scrollTop = chatWrap.scrollHeight;
+    }
   }
-
-  /* Setup hold to show menu functionality */
-  function setupHoldToShowMenu(bubble, messageId, message) {
-    let pressTimer;
-    
-    const showMenu = (e) => {
-      // Don't show menu on images
-      if (e.target.classList.contains('msg-img')) return;
-      
-      const menu = bubble.querySelector('.message-actions');
-      if (!menu) return;
-      
-      // Hide other menus
-      document.querySelectorAll('.message-actions.show').forEach(m => m.classList.remove('show'));
-      menu.classList.add('show');
-    };
-    
-    // Mouse events
-    bubble.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      pressTimer = setTimeout(() => showMenu(e), 500);
+  
+  /* Show message actions menu */
+  function showMessageActions(menu, messageId, message) {
+    // Hide any other open menus
+    document.querySelectorAll('.message-actions.show').forEach(m => {
+      m.classList.remove('show');
     });
     
-    bubble.addEventListener('mouseup', () => clearTimeout(pressTimer));
-    bubble.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+    menu.classList.add('show');
     
-    // Touch events
-    bubble.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      pressTimer = setTimeout(() => showMenu(e), 500);
-    });
+    // Position the menu
+    const rect = menu.parentElement.getBoundingClientRect();
+    menu.style.top = `${-10}px`;
+    menu.style.right = `${10}px`;
     
-    bubble.addEventListener('touchend', () => clearTimeout(pressTimer));
-    bubble.addEventListener('touchcancel', () => clearTimeout(pressTimer));
-    
-    // Right click
-    bubble.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      showMenu(e);
-    });
-  }
-
-  /* Setup message menu actions */
-  function setupMessageMenu(menu, messageId, message) {
+    // Add event listeners to action buttons
     const editBtn = menu.querySelector('.message-action.edit');
-    const deleteBtns = menu.querySelectorAll('.message-action.delete');
+    const deleteForMeBtn = menu.querySelectorAll('.message-action.delete')[0];
+    const deleteForEveryoneBtn = menu.querySelectorAll('.message-action.delete')[1];
+    
+    // Remove existing event listeners by cloning
+    const newEditBtn = editBtn.cloneNode(true);
+    const newDeleteForMeBtn = deleteForMeBtn.cloneNode(true);
+    const newDeleteForEveryoneBtn = deleteForEveryoneBtn.cloneNode(true);
+    
+    editBtn.parentNode.replaceChild(newEditBtn, editBtn);
+    deleteForMeBtn.parentNode.replaceChild(newDeleteForMeBtn, deleteForMeBtn);
+    deleteForEveryoneBtn.parentNode.replaceChild(newDeleteForEveryoneBtn, deleteForEveryoneBtn);
     
     // Edit message
-    editBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      editMessage(messageId, message);
+    newEditBtn.addEventListener('click', () => {
+      // Save current scroll position before editing
+      scrollPositionBeforeEdit = chatWrap.scrollTop;
+      currentEditingMessageId = messageId;
+      renderMessage(message, messageId);
       menu.classList.remove('show');
     });
     
-    // Delete for me
-    deleteBtns[0].addEventListener('click', (e) => {
-      e.stopPropagation();
+    // Delete for me only (remove from DB)
+    newDeleteForMeBtn.addEventListener('click', () => {
       if (confirm('Delete this message for yourself?')) {
         deleteMessageForMe(messageId);
       }
@@ -796,8 +857,7 @@
     });
     
     // Delete for everyone
-    deleteBtns[1].addEventListener('click', (e) => {
-      e.stopPropagation();
+    newDeleteForEveryoneBtn.addEventListener('click', () => {
       if (confirm('Delete this message for everyone? This cannot be undone.')) {
         deleteMessageForEveryone(messageId);
       }
@@ -805,58 +865,16 @@
     });
     
     // Close menu when clicking outside
-    menu.addEventListener('click', (e) => {
-      e.stopPropagation();
-    });
-    
-    document.addEventListener('click', (e) => {
+    const closeMenuHandler = (e) => {
       if (!menu.contains(e.target)) {
         menu.classList.remove('show');
+        document.removeEventListener('click', closeMenuHandler);
       }
-    });
-  }
-
-  /* Edit message function */
-  function editMessage(messageId, message) {
-    currentEditingMessageId = messageId;
-    // Re-render the message in edit mode
-    const row = document.querySelector(`[data-message-id="${messageId}"]`);
-    if (row) row.remove();
-    renderMessage(message, messageId);
-  }
-
-  /* Setup edit mode for a message */
-  function setupEditMode(bubble, messageId, message) {
-    const editInput = bubble.querySelector('.edit-input');
-    const saveBtn = bubble.querySelector('.edit-save');
-    const cancelBtn = bubble.querySelector('.edit-cancel');
-    
-    const saveEdit = () => {
-      scrollPosition = chatWrap.scrollTop;
-      updateMessage(messageId, editInput.value);
     };
     
-    const cancelEdit = () => {
-      currentEditingMessageId = null;
-      // Re-render without edit mode
-      const row = document.querySelector(`[data-message-id="${messageId}"]`);
-      if (row) row.remove();
-      renderMessage(message, messageId);
-    };
-    
-    saveBtn.onclick = saveEdit;
-    cancelBtn.onclick = cancelEdit;
-    
-    editInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        saveEdit();
-      } else if (e.key === 'Escape') {
-        cancelEdit();
-      }
-    });
-    
-    editInput.focus();
-    editInput.select();
+    setTimeout(() => {
+      document.addEventListener('click', closeMenuHandler);
+    }, 10);
   }
   
   /* Update message text */
@@ -870,6 +888,10 @@
         editTime: Date.now()
       });
       currentEditingMessageId = null;
+      // Restore scroll position after saving edit
+      setTimeout(() => {
+        chatWrap.scrollTop = scrollPositionBeforeEdit;
+      }, 50);
     } catch(err) {
       console.error('Failed to update message:', err);
       alert('Failed to update message');
@@ -879,6 +901,7 @@
   /* Delete message for me only */
   async function deleteMessageForMe(messageId) {
     try {
+      // Simply remove the message from the database
       await remove(ref(db, `messages/${messageId}`));
     } catch(err) {
       console.error('Failed to delete message:', err);
