@@ -193,6 +193,14 @@
     color: var(--accent);
   }
   
+  .message-action.reply {
+    color: #4dabf7;
+  }
+  
+  .message-action.like {
+    color: #ff6b6b;
+  }
+  
   /* Edit message styles - EXACT SAME POSITION */
   .edit-container {
     display: flex;
@@ -320,6 +328,60 @@
     width: 24px;
     height: 24px;
     object-fit: cover;
+  }
+  
+  /* Like button styles */
+  .like-container {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  
+  .like-button {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  
+  .like-button:hover {
+    background: rgba(255,255,255,0.05);
+  }
+  
+  .like-button.liked {
+    color: #ff6b6b;
+  }
+  
+  /* Reply styles */
+  .reply-container {
+    background: rgba(255,255,255,0.05);
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    border-left: 2px solid var(--accent);
+  }
+  
+  .reply-author {
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  
+  .reply-text {
+    font-size: 13px;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   
   /* small screens */
@@ -528,6 +590,7 @@
     
   /* Message actions state */
   let currentEditingMessageId = null;
+  let replyingToMessageId = null;
     
   /* Hide loading screen immediately */
   function hideLoadingScreen() {
@@ -654,7 +717,7 @@
   /* --- send message (text or with uploaded image) --- */  
   async function sendMessage(imageDataUrl = null){  
     const text = (messageInput.value || '').trim();  
-    if (!text && !imageDataUrl) return;  
+    if (!text && !imageDataUrl && !replyingToMessageId) return;  
     
     // Check if it's an emoji URL
     const isEmoji = imageDataUrl && imageDataUrl.includes('catbox.moe');
@@ -669,11 +732,17 @@
       time: Date.now(),  
       edited: false,
       deleted: false,
-      isEmoji: !!isEmoji
+      isEmoji: !!isEmoji,
+      likes: {},
+      replyTo: replyingToMessageId || null
     };  
     try {  
       await push(ref(db, 'messages'), payload);  
       messageInput.value = '';  
+      replyingToMessageId = null;
+      // Clear reply indicator if any
+      const replyIndicator = document.querySelector('.reply-indicator');
+      if (replyIndicator) replyIndicator.remove();
     } catch(err){  
       console.error('send failed', err);  
       alert('Failed to send message');  
@@ -735,6 +804,9 @@
   
   /* render message element - FIXED EDIT POSITION */  
   function renderMessage(m, messageId){  
+    // Don't render deleted messages
+    if (m.deleted) return;
+    
     // Check if message already exists
     const existingMessage = document.querySelector(`[data-message-id="${messageId}"]`);
     
@@ -803,9 +875,6 @@
       return; // Stop here, don't create new element
     }
 
-    // Don't render deleted messages
-    if (m.deleted) return;
-    
     const row = document.createElement('div');  
     row.className = 'msg-row' + (m.uid === uid ? ' you' : '');  
     row.setAttribute('data-message-id', messageId);
@@ -831,6 +900,16 @@
       contentHtml = `<img class="msg-img" src="${escapeHtml(m.image)}" alt="img">`;
     }
     
+    // Handle reply
+    let replyHtml = '';
+    if (m.replyTo) {
+      // In a real app, you'd fetch the replied message here
+      replyHtml = `<div class="reply-container">
+        <div class="reply-author">Replying to ${m.replyToName || 'message'}</div>
+        <div class="reply-text">${m.replyToText || ''}</div>
+      </div>`;
+    }
+    
     // Check if this message is being edited
     let messageContent = '';
     if (currentEditingMessageId === messageId) {
@@ -848,24 +927,48 @@
       messageContent = `<div class="text">${escapeHtml(m.text||'')} ${m.edited ? '<span style="font-size:11px;color:var(--muted);">(edited)</span>' : ''}</div>`;
     }
     
+    // Like button
+    const likeCount = m.likes ? Object.keys(m.likes).length : 0;
+    const isLiked = m.likes && m.likes[uid];
+    const likeHtml = `
+      <div class="like-container">
+        <button class="like-button ${isLiked ? 'liked' : ''}" data-message-id="${messageId}">
+          ${isLiked ? '❤️' : '🤍'} ${likeCount > 0 ? likeCount : ''}
+        </button>
+      </div>
+    `;
+    
     bubble.innerHTML = `
       <div class="meta">
         <div>${nameHtml}</div>
         <div class="time">${time} ${m.edited ? '✏️' : ''}</div>
       </div>
+      ${replyHtml}
       ${messageContent}
       ${contentHtml}
+      ${likeHtml}
     `;
     
-    // Add message actions menu for user's own text messages (not emojis)
-    if (m.uid === uid && !m.deleted && !m.isEmoji && currentEditingMessageId !== messageId) {
+    // Add message actions menu for user's own messages
+    if (m.uid === uid && !m.deleted && currentEditingMessageId !== messageId) {
       const actionsMenu = document.createElement('div');
       actionsMenu.className = 'message-actions';
-      actionsMenu.innerHTML = `
-        <button class="message-action edit">✏️ Edit</button>
-        <button class="message-action delete">🗑️ Delete for me</button>
-        <button class="message-action delete">🚫 Delete for everyone</button>
-      `;
+      
+      // Different options for emoji vs text messages
+      if (m.isEmoji) {
+        actionsMenu.innerHTML = `
+          <button class="message-action delete">🗑️ Delete for me</button>
+          <button class="message-action delete">🚫 Delete for everyone</button>
+        `;
+      } else {
+        actionsMenu.innerHTML = `
+          <button class="message-action edit">✏️ Edit</button>
+          <button class="message-action reply">↩️ Reply</button>
+          <button class="message-action delete">🗑️ Delete for me</button>
+          <button class="message-action delete">🚫 Delete for everyone</button>
+        `;
+      }
+      
       bubble.appendChild(actionsMenu);
       
       // Add HOLD gesture for showing menu (NOT CLICK)
@@ -874,7 +977,7 @@
       
       const startHold = (e) => {
         // Don't trigger on name clicks or if already holding
-        if (e.target.classList.contains('name') || isHolding) return;
+        if (e.target.classList.contains('name') || e.target.classList.contains('like-button') || isHolding) return;
         
         holdTimer = setTimeout(() => {
           isHolding = true;
@@ -903,8 +1006,58 @@
       });
     }
     
+    // Add actions menu for other people's messages (reply only)
+    if (m.uid !== uid && !m.deleted && currentEditingMessageId !== messageId) {
+      const actionsMenu = document.createElement('div');
+      actionsMenu.className = 'message-actions';
+      actionsMenu.innerHTML = `
+        <button class="message-action reply">↩️ Reply</button>
+      `;
+      
+      bubble.appendChild(actionsMenu);
+      
+      // Add HOLD gesture for showing menu
+      let holdTimer;
+      let isHolding = false;
+      
+      const startHold = (e) => {
+        if (e.target.classList.contains('name') || e.target.classList.contains('like-button') || isHolding) return;
+        
+        holdTimer = setTimeout(() => {
+          isHolding = true;
+          showMessageActions(actionsMenu, messageId, m);
+        }, 500);
+      };
+      
+      const endHold = () => {
+        clearTimeout(holdTimer);
+        isHolding = false;
+      };
+      
+      bubble.addEventListener('mousedown', startHold);
+      bubble.addEventListener('mouseup', endHold);
+      bubble.addEventListener('mouseleave', endHold);
+      
+      bubble.addEventListener('touchstart', startHold);
+      bubble.addEventListener('touchend', endHold);
+      bubble.addEventListener('touchcancel', endHold);
+      
+      bubble.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+      });
+    }
+    
     // name click -> open profile  
     bubble.querySelectorAll('.name').forEach(n => n.addEventListener('click', ()=> openProfile(n.dataset.uid)));  
+    
+    // Like button handler
+    const likeButton = bubble.querySelector('.like-button');
+    if (likeButton) {
+      likeButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleLike(messageId, m);
+      });
+    }
     
     // Edit button handlers if in edit mode (for new messages)
     if (currentEditingMessageId === messageId) {
@@ -974,40 +1127,53 @@
     
     // Add event listeners to action buttons
     const editBtn = menu.querySelector('.message-action.edit');
+    const replyBtn = menu.querySelector('.message-action.reply');
     const deleteForMeBtn = menu.querySelectorAll('.message-action.delete')[0];
     const deleteForEveryoneBtn = menu.querySelectorAll('.message-action.delete')[1];
     
     // Remove existing event listeners by cloning
-    const newEditBtn = editBtn.cloneNode(true);
-    const newDeleteForMeBtn = deleteForMeBtn.cloneNode(true);
-    const newDeleteForEveryoneBtn = deleteForEveryoneBtn.cloneNode(true);
+    if (editBtn) {
+      const newEditBtn = editBtn.cloneNode(true);
+      editBtn.parentNode.replaceChild(newEditBtn, editBtn);
+      newEditBtn.addEventListener('click', () => {
+        currentEditingMessageId = messageId;
+        renderMessage(message, messageId);
+        menu.classList.remove('show');
+      });
+    }
     
-    editBtn.parentNode.replaceChild(newEditBtn, editBtn);
-    deleteForMeBtn.parentNode.replaceChild(newDeleteForMeBtn, deleteForMeBtn);
-    deleteForEveryoneBtn.parentNode.replaceChild(newDeleteForEveryoneBtn, deleteForEveryoneBtn);
+    if (replyBtn) {
+      const newReplyBtn = replyBtn.cloneNode(true);
+      replyBtn.parentNode.replaceChild(newReplyBtn, replyBtn);
+      newReplyBtn.addEventListener('click', () => {
+        replyingToMessageId = messageId;
+        // Show reply indicator
+        showReplyIndicator(message);
+        menu.classList.remove('show');
+      });
+    }
     
-    // Edit message
-    newEditBtn.addEventListener('click', () => {
-      currentEditingMessageId = messageId;
-      renderMessage(message, messageId);
-      menu.classList.remove('show');
-    });
+    if (deleteForMeBtn) {
+      const newDeleteForMeBtn = deleteForMeBtn.cloneNode(true);
+      deleteForMeBtn.parentNode.replaceChild(newDeleteForMeBtn, deleteForMeBtn);
+      newDeleteForMeBtn.addEventListener('click', () => {
+        if (confirm('Delete this message for yourself?')) {
+          deleteMessageForMe(messageId);
+        }
+        menu.classList.remove('show');
+      });
+    }
     
-    // Delete for me only (remove from DB)
-    newDeleteForMeBtn.addEventListener('click', () => {
-      if (confirm('Delete this message for yourself?')) {
-        deleteMessageForMe(messageId);
-      }
-      menu.classList.remove('show');
-    });
-    
-    // Delete for everyone - FIXED VERSION
-    newDeleteForEveryoneBtn.addEventListener('click', () => {
-      if (confirm('Delete this message for everyone? This cannot be undone.')) {
-        deleteMessageForEveryone(messageId);
-      }
-      menu.classList.remove('show');
-    });
+    if (deleteForEveryoneBtn) {
+      const newDeleteForEveryoneBtn = deleteForEveryoneBtn.cloneNode(true);
+      deleteForEveryoneBtn.parentNode.replaceChild(newDeleteForEveryoneBtn, deleteForEveryoneBtn);
+      newDeleteForEveryoneBtn.addEventListener('click', () => {
+        if (confirm('Delete this message for everyone? This cannot be undone.')) {
+          deleteMessageForEveryone(messageId);
+        }
+        menu.classList.remove('show');
+      });
+    }
     
     // Close menu when clicking outside
     const closeMenuHandler = (e) => {
@@ -1020,6 +1186,67 @@
     setTimeout(() => {
       document.addEventListener('click', closeMenuHandler);
     }, 10);
+  }
+  
+  /* Show reply indicator */
+  function showReplyIndicator(message) {
+    // Remove existing indicator
+    const existingIndicator = document.querySelector('.reply-indicator');
+    if (existingIndicator) existingIndicator.remove();
+    
+    const indicator = document.createElement('div');
+    indicator.className = 'reply-indicator';
+    indicator.style.cssText = `
+      position: fixed;
+      bottom: 60px;
+      left: 10px;
+      right: 10px;
+      background: var(--panel);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 14px;
+      color: var(--muted);
+      z-index: 21;
+    `;
+    
+    const text = message.isEmoji ? 'Emoji' : (message.text || 'Image');
+    indicator.innerHTML = `
+      Replying to: ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}
+      <button style="float:right;background:none;border:none;color:var(--muted);cursor:pointer;">✕</button>
+    `;
+    
+    document.body.appendChild(indicator);
+    
+    // Cancel reply
+    indicator.querySelector('button').addEventListener('click', () => {
+      indicator.remove();
+      replyingToMessageId = null;
+    });
+    
+    // Auto focus input
+    messageInput.focus();
+  }
+  
+  /* Toggle like on message */
+  async function toggleLike(messageId, message) {
+    try {
+      const likes = message.likes || {};
+      
+      if (likes[uid]) {
+        // Unlike
+        delete likes[uid];
+      } else {
+        // Like
+        likes[uid] = true;
+      }
+      
+      await update(ref(db, `messages/${messageId}`), {
+        likes: likes
+      });
+    } catch(err) {
+      console.error('Failed to toggle like:', err);
+    }
   }
   
   /* Update message text */
@@ -1058,6 +1285,7 @@
         deleted: true,
         text: '[This message was deleted]',
         image: null,
+        isEmoji: false,
         deleteTime: Date.now(),
         deletedBy: uid
       };
@@ -1133,4 +1361,4 @@
   })();  
   </script>
 </body>
-  </html>
+        </html>
