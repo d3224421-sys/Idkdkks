@@ -197,10 +197,6 @@
     color: #4dabf7;
   }
   
-  .message-action.like {
-    color: #ff6b6b;
-  }
-  
   /* Edit message styles - EXACT SAME POSITION */
   .edit-container {
     display: flex;
@@ -330,37 +326,6 @@
     object-fit: cover;
   }
   
-  /* Like button styles */
-  .like-container {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 6px;
-    font-size: 12px;
-    color: var(--muted);
-  }
-  
-  .like-button {
-    background: none;
-    border: none;
-    color: var(--muted);
-    cursor: pointer;
-    font-size: 14px;
-    padding: 4px;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-  
-  .like-button:hover {
-    background: rgba(255,255,255,0.05);
-  }
-  
-  .like-button.liked {
-    color: #ff6b6b;
-  }
-  
   /* Reply styles */
   .reply-container {
     background: rgba(255,255,255,0.05);
@@ -382,6 +347,21 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  
+  /* Reply indicator */
+  .reply-indicator {
+    position: fixed;
+    bottom: 60px;
+    left: 10px;
+    right: 10px;
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 14px;
+    color: var(--muted);
+    z-index: 21;
   }
   
   /* small screens */
@@ -733,7 +713,6 @@
       edited: false,
       deleted: false,
       isEmoji: !!isEmoji,
-      likes: {},
       replyTo: replyingToMessageId || null
     };  
     try {  
@@ -927,17 +906,6 @@
       messageContent = `<div class="text">${escapeHtml(m.text||'')} ${m.edited ? '<span style="font-size:11px;color:var(--muted);">(edited)</span>' : ''}</div>`;
     }
     
-    // Like button
-    const likeCount = m.likes ? Object.keys(m.likes).length : 0;
-    const isLiked = m.likes && m.likes[uid];
-    const likeHtml = `
-      <div class="like-container">
-        <button class="like-button ${isLiked ? 'liked' : ''}" data-message-id="${messageId}">
-          ${isLiked ? '❤️' : '🤍'} ${likeCount > 0 ? likeCount : ''}
-        </button>
-      </div>
-    `;
-    
     bubble.innerHTML = `
       <div class="meta">
         <div>${nameHtml}</div>
@@ -946,7 +914,6 @@
       ${replyHtml}
       ${messageContent}
       ${contentHtml}
-      ${likeHtml}
     `;
     
     // Add message actions menu for user's own messages
@@ -977,7 +944,7 @@
       
       const startHold = (e) => {
         // Don't trigger on name clicks or if already holding
-        if (e.target.classList.contains('name') || e.target.classList.contains('like-button') || isHolding) return;
+        if (e.target.classList.contains('name') || isHolding) return;
         
         holdTimer = setTimeout(() => {
           isHolding = true;
@@ -1021,7 +988,7 @@
       let isHolding = false;
       
       const startHold = (e) => {
-        if (e.target.classList.contains('name') || e.target.classList.contains('like-button') || isHolding) return;
+        if (e.target.classList.contains('name') || isHolding) return;
         
         holdTimer = setTimeout(() => {
           isHolding = true;
@@ -1049,15 +1016,6 @@
     
     // name click -> open profile  
     bubble.querySelectorAll('.name').forEach(n => n.addEventListener('click', ()=> openProfile(n.dataset.uid)));  
-    
-    // Like button handler
-    const likeButton = bubble.querySelector('.like-button');
-    if (likeButton) {
-      likeButton.addEventListener('click', (e) => {
-        e.stopPropagation();
-        toggleLike(messageId, m);
-      });
-    }
     
     // Edit button handlers if in edit mode (for new messages)
     if (currentEditingMessageId === messageId) {
@@ -1228,27 +1186,6 @@
     messageInput.focus();
   }
   
-  /* Toggle like on message */
-  async function toggleLike(messageId, message) {
-    try {
-      const likes = message.likes || {};
-      
-      if (likes[uid]) {
-        // Unlike
-        delete likes[uid];
-      } else {
-        // Like
-        likes[uid] = true;
-      }
-      
-      await update(ref(db, `messages/${messageId}`), {
-        likes: likes
-      });
-    } catch(err) {
-      console.error('Failed to toggle like:', err);
-    }
-  }
-  
   /* Update message text */
   async function updateMessage(messageId, newText) {
     if (!newText.trim()) return;
@@ -1281,16 +1218,14 @@
   async function deleteMessageForEveryone(messageId) {
     try {
       // Use update with the correct path structure
-      const updates = {
+      await update(ref(db, `messages/${messageId}`), {
         deleted: true,
         text: '[This message was deleted]',
         image: null,
         isEmoji: false,
         deleteTime: Date.now(),
         deletedBy: uid
-      };
-      
-      await update(ref(db, `messages/${messageId}`), updates);
+      });
       console.log('Message deleted for everyone:', messageId);
     } catch(err) {
       console.error('Failed to delete message for everyone:', err);
@@ -1361,4 +1296,4 @@
   })();  
   </script>
 </body>
-        </html>
+    </html>
