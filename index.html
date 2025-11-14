@@ -12,6 +12,59 @@
   }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:linear-gradient(180deg,var(--bg),#071017);color:#fff}
+  /* Loading screen */
+  #loadingScreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(180deg, var(--bg), #071017);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    transition: opacity 0.3s ease;
+  }
+  
+  #loadingScreen.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+  
+  .loading-spinner {
+    width: 50px;
+    height: 50px;
+    border: 3px solid rgba(29, 209, 161, 0.3);
+    border-radius: 50%;
+    border-top-color: var(--accent);
+    animation: spin 1s ease-in-out infinite;
+    margin-bottom: 20px;
+  }
+  
+  .loading-text {
+    color: var(--muted);
+    font-size: 16px;
+    text-align: center;
+  }
+  
+  .loading-dots {
+    display: inline-block;
+    animation: dots 1.5s steps(5, end) infinite;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  
+  @keyframes dots {
+    0%, 20% { color: rgba(0,0,0,0); text-shadow: .25em 0 0 rgba(0,0,0,0), .5em 0 0 rgba(0,0,0,0); }
+    40% { color: var(--muted); text-shadow: .25em 0 0 rgba(0,0,0,0), .5em 0 0 rgba(0,0,0,0); }
+    60% { text-shadow: .25em 0 0 var(--muted), .5em 0 0 rgba(0,0,0,0); }
+    80%, 100% { text-shadow: .25em 0 0 var(--muted), .5em 0 0 var(--muted); }
+  }
+  
   /* fixed header */
   header {
     position:fixed; top:0; left:0; right:0; height:56px;
@@ -163,7 +216,7 @@
     padding: 8px;
     color: #fff;
     font-size: 15px;
-    margin-top: 6px;
+    margin: 0;
   }
   
   .edit-buttons {
@@ -276,6 +329,32 @@
     object-fit: cover;
   }
   
+  /* Connection status */
+  .connection-status {
+    position: fixed;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #ff6b6b;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    z-index: 35;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+  
+  .connection-status.show {
+    display: flex;
+  }
+  
+  .connection-status.connected {
+    background: var(--accent);
+  }
+  
   /* small screens */
   @media (max-width:420px){
     .avatar-small{width:36px;height:36px}
@@ -292,10 +371,30 @@
       right: 8px;
       max-width: none;
     }
+    .connection-status {
+      top: 56px;
+      left: 12px;
+      right: 12px;
+      transform: none;
+    }
   }
 </style>
 </head>
 <body>
+  <!-- Loading Screen -->
+  <div id="loadingScreen">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">
+      Loading chat<span class="loading-dots">...</span>
+    </div>
+  </div>
+
+  <!-- Connection Status -->
+  <div id="connectionStatus" class="connection-status">
+    <div class="connection-dot"></div>
+    <span>Connecting...</span>
+  </div>
+
   <header>
     <div class="title">
       <svg width="36" height="36" viewBox="0 0 24 24" fill="none" style="border-radius:8px;background:linear-gradient(135deg,#0ea5a3,#1dd1a1);padding:6px">
@@ -413,7 +512,10 @@
     update,
     remove,
     onChildChanged,
-    onChildRemoved
+    onChildRemoved,
+    onDisconnect,
+    onValue,
+    serverTimestamp
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";  
     
   /* ---------- YOUR FIREBASE CONFIG ---------- */  
@@ -433,6 +535,8 @@
   const db = getDatabase(app);  
     
   /* UI refs */  
+  const loadingScreen = document.getElementById('loadingScreen');
+  const connectionStatus = document.getElementById('connectionStatus');
   const chatWrap = document.getElementById('chat-wrap');  
   const messageInput = document.getElementById('messageInput');  
   const sendBtn = document.getElementById('sendBtn');  
@@ -475,7 +579,57 @@
   let currentEditingMessageId = null;
   let messageActionsMenu = null;
   let scrollPositionBeforeEdit = 0;
+  let hasMessagesLoaded = false;
+  let connectionCheckInterval;
     
+  /* Connection monitoring */
+  function monitorConnection() {
+    const connectedRef = ref(db, '.info/connected');
+    onValue(connectedRef, (snap) => {
+      if (snap.val() === true) {
+        connectionStatus.textContent = 'Connected';
+        connectionStatus.classList.add('connected');
+        setTimeout(() => {
+          connectionStatus.classList.remove('show');
+        }, 2000);
+      } else {
+        connectionStatus.textContent = 'Disconnected - Reconnecting...';
+        connectionStatus.classList.remove('connected');
+        connectionStatus.classList.add('show');
+      }
+    });
+
+    // Also check for slow connection
+    connectionCheckInterval = setInterval(() => {
+      if (!hasMessagesLoaded) {
+        connectionStatus.textContent = 'Slow connection - Still loading...';
+        connectionStatus.classList.remove('connected');
+        connectionStatus.classList.add('show');
+      }
+    }, 5000);
+  }
+  
+  /* Hide loading screen when messages start loading */
+  function hideLoadingScreen() {
+    if (!hasMessagesLoaded) {
+      hasMessagesLoaded = true;
+      setTimeout(() => {
+        loadingScreen.classList.add('hidden');
+        setTimeout(() => {
+          loadingScreen.style.display = 'none';
+        }, 300);
+      }, 500);
+    }
+  }
+  
+  /* Show loading screen when connection is lost */
+  function showLoadingScreen() {
+    if (!hasMessagesLoaded) {
+      loadingScreen.classList.remove('hidden');
+      loadingScreen.style.display = 'flex';
+    }
+  }
+  
   /* init UI with stored profile */  
   function refreshProfileUI(){  
     nameField.value = displayName;  
@@ -657,6 +811,7 @@
   onChildAdded(lastQ, snap => {  
     const m = snap.val();  
     if (!m) return;  
+    hideLoadingScreen();
     renderMessage(m, snap.key);  
   });
 
@@ -714,9 +869,11 @@
     // Check if this message is being edited
     let messageContent = '';
     if (currentEditingMessageId === messageId) {
-      // Show edit input if this message is being edited
+      // Show edit input if this message is being edited - INLINE editing
       messageContent = `
-        <input type="text" class="edit-input" value="${escapeHtml(m.text||'')}" />
+        <div class="text">
+          <input type="text" class="edit-input" value="${escapeHtml(m.text||'')}" />
+        </div>
         <div class="edit-buttons">
           <button class="edit-save">Save</button>
           <button class="edit-cancel">Cancel</button>
@@ -749,7 +906,7 @@
       // Add click event for showing menu (removed long press)
       bubble.addEventListener('click', (e) => {
         // Don't show menu if clicking on links or other interactive elements
-        if (e.target.tagName === 'A' || e.target.classList.contains('name')) return;
+        if (e.target.tagName === 'A' || e.target.classList.contains('name') || e.target.classList.contains('edit-input')) return;
         
         // Show menu on message click
         showMessageActions(actionsMenu, messageId, m);
@@ -796,6 +953,13 @@
       
       editInput.focus();
       editInput.select();
+      
+      // Keep the message in the same position during edit
+      const messageRect = row.getBoundingClientRect();
+      const chatRect = chatWrap.getBoundingClientRect();
+      if (messageRect.bottom > chatRect.bottom || messageRect.top < chatRect.top) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
     }
     
     row.appendChild(avatarEl);  
@@ -806,7 +970,7 @@
     while (chatWrap.children.length > 800) chatWrap.removeChild(chatWrap.firstChild);  
     
     // Only scroll to bottom if it's a new message, not when editing
-    if (currentEditingMessageId !== messageId) {
+    if (currentEditingMessageId !== messageId && !existingMessage) {
       chatWrap.scrollTop = chatWrap.scrollHeight;
     }
   }
@@ -951,6 +1115,9 @@
     
   /* initialize — save local profile to DB if not present */  
   (async function init(){  
+    // Start connection monitoring
+    monitorConnection();
+    
     // if local avatar exists but not saved in DB, write profile  
     try {  
       const snap = await get(child(ref(db), `profiles/${uid}`));  
@@ -974,8 +1141,19 @@
           localStorage.setItem('gc_avatar', displayAvatar); 
         }  
       }  
-    } catch(err){ console.warn('init profile read failed', err); }  
+    } catch(err){ 
+      console.warn('init profile read failed', err); 
+      // Show connection error
+      connectionStatus.textContent = 'Connection failed - Check your internet';
+      connectionStatus.classList.remove('connected');
+      connectionStatus.classList.add('show');
+    }  
     refreshProfileUI();  
+    
+    // Hide loading screen after timeout (fallback)
+    setTimeout(() => {
+      hideLoadingScreen();
+    }, 10000);
   })();  
   </script>
 </body>
