@@ -237,6 +237,12 @@
     height: 40px;
   }
   
+  .emoji-btn img {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+  }
+  
   .emoji-btn:hover {
     background: rgba(255,255,255,0.05);
   }
@@ -256,7 +262,10 @@
     .emoji-btn {
       width: 36px;
       height: 36px;
-      font-size: 16px;
+    }
+    .emoji-btn img {
+      width: 20px;
+      height: 20px;
     }
   }
 </style>
@@ -283,7 +292,9 @@
     </div>
     <input id="fileInput" type="file" accept="image/*" style="display:none" />
     <button id="imgBtn" class="icon" title="Send image">📷</button>
-    <button id="emojiBtn" class="emoji-btn" title="Send EZ">😂</button>
+    <button id="emojiBtn" class="emoji-btn" title="Send EZ">
+      <img src="https://files.catbox.moe/gvhwqz.jpeg" alt="EZ" />
+    </button>
     <button id="sendBtn" class="send">Send</button>
   </div>
 
@@ -566,7 +577,7 @@
   
   /* emoji button */
   emojiBtn.addEventListener('click', ()=> {
-    sendMessage(null, '😂 EZ');
+    sendMessage(null, 'EZ');
   });
     
   /* image send via file chooser (compress -> send) */  
@@ -674,30 +685,19 @@
       ${imageHtml}
     `;
     
-    // Add message actions menu - SIMPLIFIED (no copy text, no emoji reactions)
-    const actionsMenu = document.createElement('div');
-    actionsMenu.className = 'message-actions';
-    
+    // Add message actions menu for user's own messages
     if (m.uid === uid) {
-      // User's own message - show only edit and delete options
+      const actionsMenu = document.createElement('div');
+      actionsMenu.className = 'message-actions';
       actionsMenu.innerHTML = `
-        <button class="message-action edit" data-action="edit">✏️ Edit</button>
-        <button class="message-action delete" data-action="delete-me">🗑️ Delete for me</button>
-        <button class="message-action delete" data-action="delete-all">🚫 Delete for everyone</button>
+        <button class="message-action edit">✏️ Edit</button>
+        <button class="message-action delete">🗑️ Delete for me</button>
+        <button class="message-action delete">🚫 Delete for everyone</button>
       `;
-    } else {
-      // Other user's message - show no options (menu will be empty)
-      actionsMenu.innerHTML = ``;
-    }
-    
-    // Only add menu if there are options
-    if (actionsMenu.innerHTML.trim() !== '') {
       bubble.appendChild(actionsMenu);
-    }
-    
-    // Setup event listeners for this message
-    if (actionsMenu.innerHTML.trim() !== '') {
-      setupMessageEvents(bubble, messageId, m);
+      
+      // Setup event listeners for the menu
+      setupMessageMenu(actionsMenu, messageId, m);
     }
     
     // name click -> open profile  
@@ -712,6 +712,11 @@
     row.appendChild(avatarEl);  
     row.appendChild(bubble);  
     chatWrap.appendChild(row);  
+    
+    // Setup hold to show menu for user's own messages
+    if (m.uid === uid) {
+      setupHoldToShowMenu(bubble, messageId, m);
+    }
     
     // Restore scroll position after edit if needed
     if (scrollPosition !== null) {
@@ -728,8 +733,8 @@
     while (chatWrap.children.length > 800) chatWrap.removeChild(chatWrap.firstChild);  
   }
 
-  /* Setup event listeners for message */
-  function setupMessageEvents(bubble, messageId, message) {
+  /* Setup hold to show menu functionality */
+  function setupHoldToShowMenu(bubble, messageId, message) {
     let pressTimer;
     
     const showMenu = (e) => {
@@ -742,9 +747,6 @@
       // Hide other menus
       document.querySelectorAll('.message-actions.show').forEach(m => m.classList.remove('show'));
       menu.classList.add('show');
-      
-      // Setup menu button actions
-      setupMenuActions(menu, messageId, message);
     };
     
     // Mouse events
@@ -772,49 +774,46 @@
     });
   }
 
-  /* Setup menu button actions */
-  function setupMenuActions(menu, messageId, message) {
-    // Remove any existing event listeners by cloning the menu
-    const newMenu = menu.cloneNode(true);
-    menu.parentNode.replaceChild(newMenu, menu);
+  /* Setup message menu actions */
+  function setupMessageMenu(menu, messageId, message) {
+    const editBtn = menu.querySelector('.message-action.edit');
+    const deleteBtns = menu.querySelectorAll('.message-action.delete');
     
-    // Get fresh button references
-    const buttons = newMenu.querySelectorAll('.message-action');
+    // Edit message
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      editMessage(messageId, message);
+      menu.classList.remove('show');
+    });
     
-    buttons.forEach(button => {
-      const action = button.dataset.action;
-      
-      button.onclick = (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        
-        switch(action) {
-          case 'edit':
-            editMessage(messageId, message);
-            break;
-          case 'delete-me':
-            deleteMessageForMe(messageId);
-            break;
-          case 'delete-all':
-            deleteMessageForEveryone(messageId);
-            break;
-        }
-        
-        newMenu.classList.remove('show');
-      };
+    // Delete for me
+    deleteBtns[0].addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (confirm('Delete this message for yourself?')) {
+        deleteMessageForMe(messageId);
+      }
+      menu.classList.remove('show');
+    });
+    
+    // Delete for everyone
+    deleteBtns[1].addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (confirm('Delete this message for everyone? This cannot be undone.')) {
+        deleteMessageForEveryone(messageId);
+      }
+      menu.classList.remove('show');
     });
     
     // Close menu when clicking outside
-    const closeMenu = (e) => {
-      if (!newMenu.contains(e.target)) {
-        newMenu.classList.remove('show');
-        document.removeEventListener('click', closeMenu);
-      }
-    };
+    menu.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
     
-    setTimeout(() => {
-      document.addEventListener('click', closeMenu);
-    }, 10);
+    document.addEventListener('click', (e) => {
+      if (!menu.contains(e.target)) {
+        menu.classList.remove('show');
+      }
+    });
   }
 
   /* Edit message function */
@@ -879,8 +878,6 @@
   
   /* Delete message for me only */
   async function deleteMessageForMe(messageId) {
-    if (!confirm('Delete this message for yourself?')) return;
-    
     try {
       await remove(ref(db, `messages/${messageId}`));
     } catch(err) {
@@ -891,8 +888,6 @@
   
   /* Delete message for everyone */
   async function deleteMessageForEveryone(messageId) {
-    if (!confirm('Delete this message for everyone? This cannot be undone.')) return;
-    
     try {
       await update(ref(db, `messages/${messageId}`), {
         deleted: true,
@@ -961,4 +956,4 @@
   })();  
   </script>
 </body>
-      </html>
+  </html>
