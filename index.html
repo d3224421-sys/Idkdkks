@@ -1001,7 +1001,7 @@
       menu.classList.remove('show');
     });
     
-    // Delete for everyone
+    // Delete for everyone - FIXED VERSION
     newDeleteForEveryoneBtn.addEventListener('click', () => {
       if (confirm('Delete this message for everyone? This cannot be undone.')) {
         deleteMessageForEveryone(messageId);
@@ -1050,17 +1050,23 @@
     }
   }
   
-  /* Delete message for everyone */
+  /* Delete message for everyone - FIXED VERSION */
   async function deleteMessageForEveryone(messageId) {
     try {
-      await update(ref(db, `messages/${messageId}`), {
+      // Use update with the correct path structure
+      const updates = {
         deleted: true,
         text: '[This message was deleted]',
-        image: null
-      });
+        image: null,
+        deleteTime: Date.now(),
+        deletedBy: uid
+      };
+      
+      await update(ref(db, `messages/${messageId}`), updates);
+      console.log('Message deleted for everyone:', messageId);
     } catch(err) {
       console.error('Failed to delete message for everyone:', err);
-      alert('Failed to delete message for everyone');
+      alert('Failed to delete message for everyone: ' + err.message);
     }
   }
     
