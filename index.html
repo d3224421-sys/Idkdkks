@@ -1191,7 +1191,8 @@
     if (!newText.trim()) return;
     
     try {
-      await update(ref(db, `messages/${messageId}`), {
+      const messageRef = ref(db, 'messages/' + messageId);
+      await update(messageRef, {
         text: newText.trim(),
         edited: true,
         editTime: Date.now()
@@ -1217,10 +1218,13 @@
     }
   }
   
-  /* Delete message for everyone - ACTUALLY DELETES FROM FIREBASE */
+  /* Delete message for everyone - FIXED VERSION */
   async function deleteMessageForEveryone(messageId) {
     try {
-      const messageRef = ref(db, `messages/${messageId}`);
+      // CORRECT Firebase syntax - create the reference first
+      const messageRef = ref(db, 'messages/' + messageId);
+      
+      // Use update with the correct syntax
       await update(messageRef, {
         deleted: true,
         text: '[This message was deleted]',
@@ -1229,6 +1233,7 @@
         deleteTime: Date.now(),
         deletedBy: uid
       });
+      
       console.log('Message deleted for everyone:', messageId);
     } catch(err) {
       console.error('Failed to delete message for everyone:', err);
@@ -1299,4 +1304,4 @@
   })();  
   </script>
 </body>
-          </html>
+  </html>
