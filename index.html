@@ -456,6 +456,68 @@
     color: #fff;
   }
   
+  /* Blood name styles */
+  .blood-name {
+    background: linear-gradient(90deg, #ff0000, #ff3333, #ff0000);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: bloodPulse 2s infinite;
+    font-weight: 800;
+    text-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+    position: relative;
+    display: inline-block;
+  }
+  
+  .blood-name::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #ff0000, transparent);
+    animation: bloodLine 3s infinite;
+  }
+  
+  @keyframes bloodPulse {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+  
+  @keyframes bloodLine {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+  }
+  
+  .blood-badge {
+    background: linear-gradient(135deg, #ff0000, #cc0000);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    margin-left: 6px;
+    animation: bloodBadge 2s infinite;
+  }
+  
+  @keyframes bloodBadge {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+  }
+  
+  /* Bot message style */
+  .bot-message {
+    background: rgba(29, 209, 161, 0.1);
+    border: 1px solid rgba(29, 209, 161, 0.3);
+  }
+  
+  .bot-name {
+    color: var(--accent);
+    font-weight: 700;
+  }
+  
   /* small screens */
   @media (max-width:420px){
     .avatar-small{width:36px;height:36px}
@@ -707,6 +769,12 @@
   // Owner ID - Replace "umhxfqwb87908" with "OWNER"
   const OWNER_ID = "umhxfqwb87908";
   
+  // Blood name command user ID
+  const BLOOD_COMMAND_USER_ID = "umhyqguft3765";
+  
+  // Blood name active users storage
+  let bloodNameUsers = JSON.parse(localStorage.getItem('gc_blood_names') || '{}');
+  
   /* Automatically request notification permission for new visitors */
   function autoRequestNotificationPermission() {
     // Only ask if:
@@ -854,6 +922,106 @@
     }  
   }  
     
+  /* Blood name command system */
+  function handleBloodCommand(messageText, senderUid) {
+    // Check if sender is authorized to use blood command
+    if (senderUid !== BLOOD_COMMAND_USER_ID) return false;
+    
+    // Parse command: /give USER_ID Blood Name
+    const commandMatch = messageText.match(/^\/give\s+(\w+)\s+(.+)$/);
+    if (!commandMatch) return false;
+    
+    const targetUserId = commandMatch[1];
+    const bloodName = commandMatch[2];
+    
+    // Don't allow giving blood name to yourself
+    if (targetUserId === senderUid) return false;
+    
+    // Set blood name with 24-hour expiry
+    const expiryTime = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
+    bloodNameUsers[targetUserId] = {
+      name: bloodName,
+      expiry: expiryTime,
+      givenBy: senderUid,
+      givenAt: Date.now()
+    };
+    
+    // Save to localStorage
+    localStorage.setItem('gc_blood_names', JSON.stringify(bloodNameUsers));
+    
+    // Send bot message
+    sendBotMessage(`🩸 BLOOD NAME ACTIVATED! User ${targetUserId} received the blood name "${bloodName}"! It will expire in 24 hours.`);
+    
+    // Send notification message
+    sendBotMessage(`⏰ YOUR BLOOD COLOUR NAME WILL FINISH AT 24 HOUR START NOW!`);
+    
+    return true;
+  }
+  
+  /* Check and remove expired blood names */
+  function checkBloodNameExpiry() {
+    const now = Date.now();
+    let expiredUsers = [];
+    
+    for (const [userId, data] of Object.entries(bloodNameUsers)) {
+      if (now > data.expiry) {
+        expiredUsers.push(userId);
+      }
+    }
+    
+    // Remove expired users and send notifications
+    expiredUsers.forEach(userId => {
+      delete bloodNameUsers[userId];
+      sendBotMessage(`🩸 THE BLOOD COLOUR NAME FOR USER ${userId} HAS FINISHED!`);
+    });
+    
+    if (expiredUsers.length > 0) {
+      localStorage.setItem('gc_blood_names', JSON.stringify(bloodNameUsers));
+    }
+  }
+  
+  /* Get blood name for user */
+  function getBloodName(userId) {
+    const bloodData = bloodNameUsers[userId];
+    if (!bloodData) return null;
+    
+    // Check if expired
+    if (Date.now() > bloodData.expiry) {
+      delete bloodNameUsers[userId];
+      localStorage.setItem('gc_blood_names', JSON.stringify(bloodNameUsers));
+      return null;
+    }
+    
+    return bloodData.name;
+  }
+  
+  /* Send bot message */
+  async function sendBotMessage(text) {
+    const payload = {  
+      uid: 'BOT',  
+      name: 'System Bot',  
+      avatar: 'https://files.catbox.moe/jignnb.jpeg',  
+      bio: '',  
+      text: text,  
+      image: null,  
+      time: Date.now(),  
+      edited: false,
+      deleted: false,
+      isEmoji: false,
+      replyTo: null,
+      replyToName: null,
+      replyToText: null,
+      replyToUid: null,
+      isBot: true
+    };  
+    
+    try {  
+      await push(ref(db, 'messages'), payload);  
+    } catch(err){  
+      console.error('Bot message failed', err);  
+    }  
+  }
+  
   /* Event Listeners */
   
   aboutBtn.onclick = () => { 
@@ -942,6 +1110,12 @@
   async function sendMessage(imageDataUrl = null){  
     const text = (messageInput.value || '').trim();  
     if (!text && !imageDataUrl && !replyingToMessageId) return;  
+    
+    // Check for blood command
+    if (text.startsWith('/give') && handleBloodCommand(text, uid)) {
+      messageInput.value = '';
+      return;
+    }
     
     // Check if it's an emoji URL
     const isEmoji = imageDataUrl && imageDataUrl.includes('catbox.moe');
@@ -1170,13 +1344,23 @@
     // bubble  
     const bubble = document.createElement('div');  
     bubble.className = 'bubble' + (m.uid === uid ? ' you' : '');  
+    if (m.isBot) {
+      bubble.classList.add('bot-message');
+    }
     
     const time = new Date(m.time || Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});  
     
+    // Check blood name
+    const bloodName = getBloodName(m.uid);
+    
     // Check if user is owner and show "OWNER" badge
     let nameHtml;
-    if (m.uid === OWNER_ID) {
+    if (m.isBot) {
+      nameHtml = `<span class="bot-name" data-uid="${escapeHtml(m.uid)}">${escapeHtml(m.name || 'System Bot')}</span>`;
+    } else if (m.uid === OWNER_ID) {
       nameHtml = `<span class="name" data-uid="${escapeHtml(m.uid)}">${escapeHtml(m.name || 'User')}<span class="owner-badge">OWNER</span></span>`;
+    } else if (bloodName) {
+      nameHtml = `<span class="blood-name" data-uid="${escapeHtml(m.uid)}">${escapeHtml(m.name || 'User')}<span class="blood-badge">${escapeHtml(bloodName)}</span></span>`;
     } else {
       nameHtml = `<span class="name" data-uid="${escapeHtml(m.uid)}">${escapeHtml(m.name || 'User')}</span>`;
     }
@@ -1254,8 +1438,8 @@
       });
     });
     
-    // Add message actions menu for user's own messages
-    if (m.uid === uid && !m.deleted && currentEditingMessageId !== messageId) {
+    // Add message actions menu for user's own messages (not for bot messages)
+    if (m.uid === uid && !m.deleted && currentEditingMessageId !== messageId && !m.isBot) {
       const actionsMenu = document.createElement('div');
       actionsMenu.className = 'message-actions';
       
@@ -1311,8 +1495,8 @@
       });
     }
     
-    // Add actions menu for other people's messages (reply only)
-    if (m.uid !== uid && !m.deleted && currentEditingMessageId !== messageId) {
+    // Add actions menu for other people's messages (reply only, not for bot messages)
+    if (m.uid !== uid && !m.deleted && currentEditingMessageId !== messageId && !m.isBot) {
       const actionsMenu = document.createElement('div');
       actionsMenu.className = 'message-actions';
       actionsMenu.innerHTML = `
@@ -1352,8 +1536,10 @@
       });
     }
     
-    // name click -> open profile  
-    bubble.querySelectorAll('.name').forEach(n => n.addEventListener('click', ()=> openProfile(n.dataset.uid)));  
+    // name click -> open profile (not for bot messages)
+    if (!m.isBot) {
+      bubble.querySelectorAll('.name, .blood-name').forEach(n => n.addEventListener('click', ()=> openProfile(n.dataset.uid)));  
+    }
     
     // Edit button handlers if in edit mode (for new messages)
     if (currentEditingMessageId === messageId) {
@@ -1616,6 +1802,12 @@
     // Automatically request notification permission for new visitors
     autoRequestNotificationPermission();
     
+    // Check blood name expiry on startup
+    checkBloodNameExpiry();
+    
+    // Check blood name expiry every minute
+    setInterval(checkBloodNameExpiry, 60000);
+    
     // if local avatar exists but not saved in DB, write profile  
     try {  
       const snap = await get(child(ref(db), `profiles/${uid}`));  
@@ -1646,4 +1838,4 @@
   })();  
   </script>
 </body>
-        </html>
+  </html>
