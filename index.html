@@ -207,7 +207,13 @@
     color: var(--accent);
   }
   
-  /* Edit message input */
+  /* Edit message styles - EXACT SAME POSITION */
+  .edit-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
   .edit-input {
     width: 100%;
     background: rgba(0,0,0,0.3);
@@ -217,12 +223,13 @@
     color: #fff;
     font-size: 15px;
     margin: 0;
+    font-family: inherit;
+    line-height: inherit;
   }
   
   .edit-buttons {
     display: flex;
     gap: 8px;
-    margin-top: 8px;
   }
   
   .edit-buttons button {
@@ -329,32 +336,6 @@
     object-fit: cover;
   }
   
-  /* Connection status */
-  .connection-status {
-    position: fixed;
-    top: 60px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #ff6b6b;
-    color: white;
-    padding: 8px 16px;
-    border-radius: 8px;
-    font-size: 14px;
-    z-index: 35;
-    display: none;
-    align-items: center;
-    gap: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-  }
-  
-  .connection-status.show {
-    display: flex;
-  }
-  
-  .connection-status.connected {
-    background: var(--accent);
-  }
-  
   /* small screens */
   @media (max-width:420px){
     .avatar-small{width:36px;height:36px}
@@ -371,12 +352,6 @@
       right: 8px;
       max-width: none;
     }
-    .connection-status {
-      top: 56px;
-      left: 12px;
-      right: 12px;
-      transform: none;
-    }
   }
 </style>
 </head>
@@ -387,12 +362,6 @@
     <div class="loading-text">
       Loading chat<span class="loading-dots">...</span>
     </div>
-  </div>
-
-  <!-- Connection Status -->
-  <div id="connectionStatus" class="connection-status">
-    <div class="connection-dot"></div>
-    <span>Connecting...</span>
   </div>
 
   <header>
@@ -513,9 +482,7 @@
     remove,
     onChildChanged,
     onChildRemoved,
-    onDisconnect,
-    onValue,
-    serverTimestamp
+    onValue
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";  
     
   /* ---------- YOUR FIREBASE CONFIG ---------- */  
@@ -536,7 +503,6 @@
     
   /* UI refs */  
   const loadingScreen = document.getElementById('loadingScreen');
-  const connectionStatus = document.getElementById('connectionStatus');
   const chatWrap = document.getElementById('chat-wrap');  
   const messageInput = document.getElementById('messageInput');  
   const sendBtn = document.getElementById('sendBtn');  
@@ -578,37 +544,8 @@
   /* Message actions state */
   let currentEditingMessageId = null;
   let messageActionsMenu = null;
-  let scrollPositionBeforeEdit = 0;
   let hasMessagesLoaded = false;
-  let connectionCheckInterval;
     
-  /* Connection monitoring */
-  function monitorConnection() {
-    const connectedRef = ref(db, '.info/connected');
-    onValue(connectedRef, (snap) => {
-      if (snap.val() === true) {
-        connectionStatus.textContent = 'Connected';
-        connectionStatus.classList.add('connected');
-        setTimeout(() => {
-          connectionStatus.classList.remove('show');
-        }, 2000);
-      } else {
-        connectionStatus.textContent = 'Disconnected - Reconnecting...';
-        connectionStatus.classList.remove('connected');
-        connectionStatus.classList.add('show');
-      }
-    });
-
-    // Also check for slow connection
-    connectionCheckInterval = setInterval(() => {
-      if (!hasMessagesLoaded) {
-        connectionStatus.textContent = 'Slow connection - Still loading...';
-        connectionStatus.classList.remove('connected');
-        connectionStatus.classList.add('show');
-      }
-    }, 5000);
-  }
-  
   /* Hide loading screen when messages start loading */
   function hideLoadingScreen() {
     if (!hasMessagesLoaded) {
@@ -619,14 +556,6 @@
           loadingScreen.style.display = 'none';
         }, 300);
       }, 500);
-    }
-  }
-  
-  /* Show loading screen when connection is lost */
-  function showLoadingScreen() {
-    if (!hasMessagesLoaded) {
-      loadingScreen.classList.remove('hidden');
-      loadingScreen.style.display = 'flex';
     }
   }
   
@@ -835,6 +764,16 @@
     // Check if message already exists
     const existingMessage = document.querySelector(`[data-message-id="${messageId}"]`);
     if (existingMessage) {
+      // If we're editing this message, preserve the scroll position
+      if (currentEditingMessageId === messageId) {
+        const existingRect = existingMessage.getBoundingClientRect();
+        const chatRect = chatWrap.getBoundingClientRect();
+        const isVisible = existingRect.top >= chatRect.top && existingRect.bottom <= chatRect.bottom;
+        
+        if (!isVisible) {
+          existingMessage.scrollIntoView({ behavior: 'instant', block: 'center' });
+        }
+      }
       existingMessage.remove();
     }
 
@@ -869,14 +808,14 @@
     // Check if this message is being edited
     let messageContent = '';
     if (currentEditingMessageId === messageId) {
-      // Show edit input if this message is being edited - INLINE editing
+      // Show edit input - EXACT SAME POSITION as original text
       messageContent = `
-        <div class="text">
+        <div class="edit-container">
           <input type="text" class="edit-input" value="${escapeHtml(m.text||'')}" />
-        </div>
-        <div class="edit-buttons">
-          <button class="edit-save">Save</button>
-          <button class="edit-cancel">Cancel</button>
+          <div class="edit-buttons">
+            <button class="edit-save">Save</button>
+            <button class="edit-cancel">Cancel</button>
+          </div>
         </div>
       `;
     } else {
@@ -893,7 +832,7 @@
     `;
     
     // Add message actions menu for user's own text messages (not emojis)
-    if (m.uid === uid && !m.deleted && !m.isEmoji) {
+    if (m.uid === uid && !m.deleted && !m.isEmoji && currentEditingMessageId !== messageId) {
       const actionsMenu = document.createElement('div');
       actionsMenu.className = 'message-actions';
       actionsMenu.innerHTML = `
@@ -903,7 +842,7 @@
       `;
       bubble.appendChild(actionsMenu);
       
-      // Add click event for showing menu (removed long press)
+      // Add click event for showing menu
       bubble.addEventListener('click', (e) => {
         // Don't show menu if clicking on links or other interactive elements
         if (e.target.tagName === 'A' || e.target.classList.contains('name') || e.target.classList.contains('edit-input')) return;
@@ -933,10 +872,6 @@
       
       const cancelEdit = () => {
         currentEditingMessageId = null;
-        // Restore scroll position after edit
-        setTimeout(() => {
-          chatWrap.scrollTop = scrollPositionBeforeEdit;
-        }, 50);
         renderMessage(m, messageId); // Re-render without edit mode
       };
       
@@ -951,15 +886,11 @@
         }
       });
       
-      editInput.focus();
-      editInput.select();
-      
-      // Keep the message in the same position during edit
-      const messageRect = row.getBoundingClientRect();
-      const chatRect = chatWrap.getBoundingClientRect();
-      if (messageRect.bottom > chatRect.bottom || messageRect.top < chatRect.top) {
-        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      // Focus and select after a small delay to ensure the element is rendered
+      setTimeout(() => {
+        editInput.focus();
+        editInput.select();
+      }, 10);
     }
     
     row.appendChild(avatarEl);  
@@ -1005,8 +936,6 @@
     
     // Edit message
     newEditBtn.addEventListener('click', () => {
-      // Save current scroll position before editing
-      scrollPositionBeforeEdit = chatWrap.scrollTop;
       currentEditingMessageId = messageId;
       renderMessage(message, messageId);
       menu.classList.remove('show');
@@ -1052,10 +981,6 @@
         editTime: Date.now()
       });
       currentEditingMessageId = null;
-      // Restore scroll position after saving edit
-      setTimeout(() => {
-        chatWrap.scrollTop = scrollPositionBeforeEdit;
-      }, 50);
     } catch(err) {
       console.error('Failed to update message:', err);
       alert('Failed to update message');
@@ -1115,9 +1040,6 @@
     
   /* initialize — save local profile to DB if not present */  
   (async function init(){  
-    // Start connection monitoring
-    monitorConnection();
-    
     // if local avatar exists but not saved in DB, write profile  
     try {  
       const snap = await get(child(ref(db), `profiles/${uid}`));  
@@ -1143,10 +1065,6 @@
       }  
     } catch(err){ 
       console.warn('init profile read failed', err); 
-      // Show connection error
-      connectionStatus.textContent = 'Connection failed - Check your internet';
-      connectionStatus.classList.remove('connected');
-      connectionStatus.classList.add('show');
     }  
     refreshProfileUI();  
     
