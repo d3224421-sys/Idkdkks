@@ -336,28 +336,6 @@
     object-fit: cover;
   }
   
-  /* Hold indicator */
-  .hold-indicator {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: var(--accent);
-    color: #012;
-    padding: 8px 12px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
-    opacity: 0;
-    transition: opacity 0.2s;
-    pointer-events: none;
-    z-index: 5;
-  }
-  
-  .hold-indicator.show {
-    opacity: 1;
-  }
-  
   /* small screens */
   @media (max-width:420px){
     .avatar-small{width:36px;height:36px}
@@ -779,12 +757,74 @@
     }
   });
   
-  /* render message element */  
+  /* render message element - FIXED EDIT POSITION */  
   function renderMessage(m, messageId){  
     // Check if message already exists
     const existingMessage = document.querySelector(`[data-message-id="${messageId}"]`);
-    if (existingMessage && currentEditingMessageId !== messageId) {
-      existingMessage.remove();
+    
+    // If we're editing this message and it already exists, DON'T recreate it
+    if (currentEditingMessageId === messageId && existingMessage) {
+      // Just update the existing message content without moving it
+      const bubble = existingMessage.querySelector('.bubble');
+      const time = new Date(m.time || Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});  
+      const nameHtml = `<span class="name" data-uid="${escapeHtml(m.uid)}">${escapeHtml(m.name || 'User')}</span>`;  
+      
+      // Handle emoji messages
+      let contentHtml = '';
+      if (m.isEmoji && m.image) {
+        contentHtml = `<img class="msg-img" src="${escapeHtml(m.image)}" alt="emoji" style="max-width: 100px;">`;
+      } else if (m.image) {
+        contentHtml = `<img class="msg-img" src="${escapeHtml(m.image)}" alt="img">`;
+      }
+      
+      // Update the bubble content for edit mode
+      bubble.innerHTML = `
+        <div class="meta">
+          <div>${nameHtml}</div>
+          <div class="time">${time} ${m.edited ? '✏️' : ''}</div>
+        </div>
+        <div class="edit-container">
+          <input type="text" class="edit-input" value="${escapeHtml(m.text||'')}" />
+          <div class="edit-buttons">
+            <button class="edit-save">Save</button>
+            <button class="edit-cancel">Cancel</button>
+          </div>
+        </div>
+        ${contentHtml}
+      `;
+      
+      // Re-attach edit event handlers
+      const editInput = bubble.querySelector('.edit-input');
+      const saveBtn = bubble.querySelector('.edit-save');
+      const cancelBtn = bubble.querySelector('.edit-cancel');
+      
+      const saveEdit = () => {
+        updateMessage(messageId, editInput.value);
+      };
+      
+      const cancelEdit = () => {
+        currentEditingMessageId = null;
+        renderMessage(m, messageId); // Re-render without edit mode
+      };
+      
+      saveBtn.addEventListener('click', saveEdit);
+      cancelBtn.addEventListener('click', cancelEdit);
+      
+      editInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          saveEdit();
+        } else if (e.key === 'Escape') {
+          cancelEdit();
+        }
+      });
+      
+      // Focus and select after a small delay to ensure the element is rendered
+      setTimeout(() => {
+        editInput.focus();
+        editInput.select();
+      }, 10);
+      
+      return; // Stop here, don't create new element
     }
 
     // Don't render deleted messages
@@ -818,7 +858,7 @@
     // Check if this message is being edited
     let messageContent = '';
     if (currentEditingMessageId === messageId) {
-      // Show edit input - EXACT SAME POSITION as original text
+      // Show edit input
       messageContent = `
         <div class="edit-container">
           <input type="text" class="edit-input" value="${escapeHtml(m.text||'')}" />
@@ -890,7 +930,7 @@
     // name click -> open profile  
     bubble.querySelectorAll('.name').forEach(n => n.addEventListener('click', ()=> openProfile(n.dataset.uid)));  
     
-    // Edit button handlers if in edit mode
+    // Edit button handlers if in edit mode (for new messages)
     if (currentEditingMessageId === messageId) {
       const editInput = bubble.querySelector('.edit-input');
       const saveBtn = bubble.querySelector('.edit-save');
@@ -926,10 +966,10 @@
     row.appendChild(avatarEl);  
     row.appendChild(bubble);  
     
-    // If we're editing, replace the existing message, otherwise append new
-    if (currentEditingMessageId === messageId && existingMessage) {
+    // If message already exists, replace it (except when editing)
+    if (existingMessage && currentEditingMessageId !== messageId) {
       existingMessage.parentNode.replaceChild(row, existingMessage);
-    } else {
+    } else if (!existingMessage) {
       chatWrap.appendChild(row);  
     }
     
@@ -991,7 +1031,7 @@
         deleteMessageForEveryone(messageId);
       }
       menu.classList.remove('show');
-    });
+    };
     
     // Close menu when clicking outside
     const closeMenuHandler = (e) => {
