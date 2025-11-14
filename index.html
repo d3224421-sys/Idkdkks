@@ -25,12 +25,10 @@
     align-items: center;
     justify-content: center;
     z-index: 100;
-    transition: opacity 0.3s ease;
   }
   
   #loadingScreen.hidden {
-    opacity: 0;
-    pointer-events: none;
+    display: none;
   }
   
   .loading-spinner {
@@ -530,26 +528,10 @@
     
   /* Message actions state */
   let currentEditingMessageId = null;
-  let hasMessagesLoaded = false;
-  let loadingTimeout = null;
     
-  /* Hide loading screen immediately when messages start loading */
+  /* Hide loading screen immediately */
   function hideLoadingScreen() {
-    if (!hasMessagesLoaded) {
-      hasMessagesLoaded = true;
-      if (loadingTimeout) {
-        clearTimeout(loadingTimeout);
-      }
-      loadingScreen.classList.add('hidden');
-      setTimeout(() => {
-        loadingScreen.style.display = 'none';
-      }, 300);
-    }
-  }
-
-  /* Show chat immediately and hide loading quickly */
-  function showChatImmediately() {
-    hideLoadingScreen();
+    loadingScreen.classList.add('hidden');
   }
   
   /* init UI with stored profile */  
@@ -558,7 +540,6 @@
     bioField.value = displayBio;  
     profileAvatar.src = displayAvatar || defaultAvatarSVG();  
   }  
-  refreshProfileUI();  
     
   /* helper: default svg avatar (data URL) */  
   function defaultAvatarSVG(){  
@@ -1111,10 +1092,10 @@
     
   /* initialize — save local profile to DB if not present */  
   (async function init(){  
-    // Hide loading screen quickly (3 seconds max)
-    loadingTimeout = setTimeout(() => {
+    // Hide loading screen immediately - show chat right away
+    setTimeout(() => {
       hideLoadingScreen();
-    }, 3000);
+    }, 100);
     
     // if local avatar exists but not saved in DB, write profile  
     try {  
@@ -1141,11 +1122,9 @@
       }  
     } catch(err){ 
       console.warn('init profile read failed', err); 
-      // Even if profile fails, show chat
-      hideLoadingScreen();
     }  
     refreshProfileUI();  
   })();  
   </script>
 </body>
-        </html>
+  </html>
