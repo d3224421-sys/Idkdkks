@@ -51,6 +51,35 @@
     to { transform: rotate(360deg); }
   }
   
+  /* Notification permission modal */
+  #notificationModal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+  
+  .notification-card {
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 24px;
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  
+  .notification-icon {
+    font-size: 48px;
+    margin-bottom: 20px;
+  }
+  
   /* fixed header */
   header {
     position:fixed; top:0; left:0; right:0; height:56px;
@@ -369,15 +398,6 @@
     z-index: 21;
   }
   
-  /* New user indicator */
-  .new-user-indicator {
-    text-align: center;
-    margin: 10px 0;
-    color: var(--muted);
-    font-style: italic;
-    font-size: 13px;
-  }
-  
   /* small screens */
   @media (max-width:420px){
     .avatar-small{width:36px;height:36px}
@@ -394,10 +414,26 @@
       right: 8px;
       max-width: none;
     }
+    .notification-card {
+      padding: 20px;
+    }
   }
 </style>
 </head>
 <body>
+  <!-- Notification Permission Modal -->
+  <div id="notificationModal">
+    <div class="notification-card">
+      <div class="notification-icon">🔔</div>
+      <h2 style="color: var(--accent); margin-bottom: 10px;">Enable Notifications</h2>
+      <p style="color: var(--muted); margin-bottom: 20px; line-height: 1.5;">
+        Get notified when someone replies to you or sends new messages. Stay connected with the conversation!
+      </p>
+      <button id="enableNotifications" class="btn primary" style="width: 100%; padding: 12px; margin-bottom: 10px;">Enable Notifications</button>
+      <button id="skipNotifications" class="btn ghost" style="width: 100%; padding: 12px;">Skip for now</button>
+    </div>
+  </div>
+
   <!-- Loading Screen -->
   <div id="loadingScreen">
     <div class="loading-spinner"></div>
@@ -543,6 +579,9 @@
   const db = getDatabase(app);  
     
   /* UI refs */  
+  const notificationModal = document.getElementById('notificationModal');
+  const enableNotifications = document.getElementById('enableNotifications');
+  const skipNotifications = document.getElementById('skipNotifications');
   const loadingScreen = document.getElementById('loadingScreen');
   const chatWrap = document.getElementById('chat-wrap');  
   const messageInput = document.getElementById('messageInput');  
@@ -583,7 +622,7 @@
     
   // Generate random name for new users
   const randomNames = ['Shadow', 'Neon', 'Cyber', 'Phantom', 'Vector', 'Nova', 'Echo', 'Zenith', 'Orbit', 'Quantum', 'Pixel', 'Matrix'];
-  const randomName = randomNames[Math.floor(Math.random() * randomNames)] + Math.floor(Math.random() * 1000);
+  const randomName = randomNames[Math.floor(Math.random() * randomNames.length)] + Math.floor(Math.random() * 1000);
   
   let displayName = localStorage.getItem('gc_name') || randomName;  
   let displayBio = localStorage.getItem('gc_bio') || '';  
@@ -594,25 +633,94 @@
   let replyingToMessageId = null;
   let repliedMessageData = null;
   let lastMessageTime = 0;
+  let notificationPermissionAsked = localStorage.getItem('gc_notification_asked') === 'true';
     
-  /* Request notification permission */
-  function requestNotificationPermission() {
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission().then(permission => {
-        if (permission === "granted") {
-          console.log("Notification permission granted");
-        }
-      });
+  /* Show notification permission modal */
+  function showNotificationModal() {
+    if (!notificationPermissionAsked && "Notification" in window && Notification.permission === "default") {
+      notificationModal.style.display = 'flex';
+    } else {
+      notificationModal.style.display = 'none';
+      hideLoadingScreen();
     }
   }
   
-  /* Show notification */
-  function showNotification(title, body) {
-    if ("Notification" in window && Notification.permission === "granted") {
-      new Notification(title, {
-        body: body,
-        icon: "https://files.catbox.moe/jignnb.jpeg"
+  /* Request notification permission */
+  function requestNotificationPermission() {
+    if ("Notification" in window) {
+      Notification.requestPermission().then(permission => {
+        localStorage.setItem('gc_notification_asked', 'true');
+        notificationPermissionAsked = true;
+        notificationModal.style.display = 'none';
+        hideLoadingScreen();
+        
+        if (permission === "granted") {
+          console.log("Notification permission granted");
+          // Show success message
+          showTemporaryMessage("🔔 Notifications enabled! You'll get notified for replies and new messages.");
+        }
+      }).catch(err => {
+        console.error("Notification permission error:", err);
+        notificationModal.style.display = 'none';
+        hideLoadingScreen();
       });
+    } else {
+      notificationModal.style.display = 'none';
+      hideLoadingScreen();
+    }
+  }
+  
+  /* Show temporary message */
+  function showTemporaryMessage(message) {
+    const tempMsg = document.createElement('div');
+    tempMsg.style.cssText = `
+      position: fixed;
+      top: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--accent);
+      color: #012;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-weight: 600;
+      z-index: 100;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    `;
+    tempMsg.textContent = message;
+    document.body.appendChild(tempMsg);
+    
+    setTimeout(() => {
+      tempMsg.remove();
+    }, 3000);
+  }
+  
+  /* Show notification */
+  function showNotification(title, body, tag = '') {
+    if ("Notification" in window && Notification.permission === "granted" && !document.hasFocus()) {
+      const options = {
+        body: body,
+        icon: "https://files.catbox.moe/jignnb.jpeg",
+        tag: tag || 'global-chat',
+        requireInteraction: false
+      };
+      
+      // Close existing notification with same tag before showing new one
+      try {
+        const notification = new Notification(title, options);
+        
+        // Auto close after 5 seconds
+        setTimeout(() => {
+          notification.close();
+        }, 5000);
+        
+        // Focus window when notification is clicked
+        notification.onclick = () => {
+          window.focus();
+          notification.close();
+        };
+      } catch (err) {
+        console.error('Notification error:', err);
+      }
     }
   }
   
@@ -678,6 +786,15 @@
   }  
     
   /* Event Listeners */
+  enableNotifications.addEventListener('click', requestNotificationPermission);
+  
+  skipNotifications.addEventListener('click', () => {
+    localStorage.setItem('gc_notification_asked', 'true');
+    notificationPermissionAsked = true;
+    notificationModal.style.display = 'none';
+    hideLoadingScreen();
+  });
+  
   aboutBtn.onclick = () => { 
     aboutPage.classList.add('active'); 
   };
@@ -759,7 +876,8 @@
       isEmoji: !!isEmoji,
       replyTo: replyingToMessageId || null,
       replyToName: repliedMessageData?.name || null,
-      replyToText: repliedMessageData?.text || null
+      replyToText: repliedMessageData?.text || null,
+      replyToUid: repliedMessageData?.uid || null
     };  
     try {  
       await push(ref(db, 'messages'), payload);  
@@ -812,8 +930,24 @@
     
     // Show notification for new messages (except your own and if page is not focused)
     if (m.uid !== uid && !document.hasFocus() && m.time > lastMessageTime) {
-      const messageText = m.isEmoji ? 'sent an emoji' : (m.text || 'sent an image');
-      showNotification(`${m.name}`, messageText);
+      let notificationTitle = `${m.name}`;
+      let notificationBody = '';
+      let notificationTag = 'new-message';
+      
+      // Check if this is a reply to the current user
+      if (m.replyToUid === uid) {
+        notificationTitle = `↩️ ${m.name} replied to you`;
+        notificationBody = m.text || 'Sent an image';
+        notificationTag = 'reply';
+      } else if (m.replyTo && m.replyToName) {
+        notificationBody = `Replying to ${m.replyToName}: ${m.text || 'Sent an image'}`;
+      } else if (m.isEmoji) {
+        notificationBody = 'sent an emoji';
+      } else {
+        notificationBody = m.text || 'sent an image';
+      }
+      
+      showNotification(notificationTitle, notificationBody, notificationTag);
     }
     lastMessageTime = Math.max(lastMessageTime, m.time);
     
@@ -1189,7 +1323,8 @@
         replyingToMessageId = messageId;
         repliedMessageData = {
           name: message.name,
-          text: message.text
+          text: message.text,
+          uid: message.uid
         };
         // Show reply indicator
         showReplyIndicator(message);
@@ -1353,13 +1488,8 @@
     
   /* initialize — save local profile to DB if not present */  
   (async function init(){  
-    // Request notification permission
-    requestNotificationPermission();
-    
-    // Hide loading screen after a delay
-    setTimeout(() => {
-      hideLoadingScreen();
-    }, 1000);
+    // Show notification permission modal on first visit
+    showNotificationModal();
     
     // if local avatar exists but not saved in DB, write profile  
     try {  
