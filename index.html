@@ -120,6 +120,77 @@
   .btn.primary { background:var(--accent); color:#022; font-weight:700; }
   .btn.ghost { background:transparent; border:1px solid rgba(255,255,255,0.04); color:var(--muted); }
   
+  /* Notification toggle styles */
+  .notification-toggle {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  
+  .toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+  }
+  
+  .toggle-icon {
+    font-size: 18px;
+  }
+  
+  .toggle-switch {
+    position: relative;
+    width: 50px;
+    height: 24px;
+  }
+  
+  .toggle-checkbox {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  
+  .toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255,255,255,0.1);
+    transition: .4s;
+    border-radius: 24px;
+  }
+  
+  .toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+  }
+  
+  .toggle-checkbox:checked + .toggle-slider {
+    background-color: var(--accent);
+  }
+  
+  .toggle-checkbox:checked + .toggle-slider:before {
+    transform: translateX(26px);
+  }
+  
+  .toggle-status {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+    text-align: right;
+  }
+  
   /* About page styles */
   #aboutPage {
     position: fixed;
@@ -503,6 +574,27 @@
           <textarea id="bioField" class="field" rows="3" placeholder="Short bio (optional)"></textarea>
         </div>
       </div>
+      
+      <!-- Notification Toggle -->
+      <div class="notification-toggle">
+        <div class="toggle-label">
+          <span class="toggle-icon">🔔</span>
+          <div>
+            <div style="font-weight: 600;">Push Notifications</div>
+            <div style="font-size: 12px; color: var(--muted);">Get notified for replies and new messages</div>
+          </div>
+        </div>
+        <div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="notificationToggle" class="toggle-checkbox">
+            <span class="toggle-slider"></span>
+          </label>
+          <div id="notificationStatus" class="toggle-status">
+            <!-- Status will be updated by JavaScript -->
+          </div>
+        </div>
+      </div>
+
       <div style="margin-top:10px;">
         <label class="muted">Choose avatar (file) — will be visible to everyone</label>
         <input id="avatarFile" type="file" accept="image/*" style="margin-top:8px" />
@@ -582,6 +674,8 @@
   const notificationModal = document.getElementById('notificationModal');
   const enableNotifications = document.getElementById('enableNotifications');
   const skipNotifications = document.getElementById('skipNotifications');
+  const notificationToggle = document.getElementById('notificationToggle');
+  const notificationStatus = document.getElementById('notificationStatus');
   const loadingScreen = document.getElementById('loadingScreen');
   const chatWrap = document.getElementById('chat-wrap');  
   const messageInput = document.getElementById('messageInput');  
@@ -635,6 +729,31 @@
   let lastMessageTime = 0;
   let notificationPermissionAsked = localStorage.getItem('gc_notification_asked') === 'true';
     
+  /* Update notification toggle UI */
+  function updateNotificationToggleUI() {
+    if (!("Notification" in window)) {
+      notificationToggle.disabled = true;
+      notificationStatus.textContent = "Not supported";
+      return;
+    }
+
+    switch(Notification.permission) {
+      case "granted":
+        notificationToggle.checked = true;
+        notificationStatus.textContent = "Enabled";
+        break;
+      case "denied":
+        notificationToggle.checked = false;
+        notificationToggle.disabled = true;
+        notificationStatus.textContent = "Blocked by browser";
+        break;
+      case "default":
+        notificationToggle.checked = false;
+        notificationStatus.textContent = "Click to enable";
+        break;
+    }
+  }
+  
   /* Show notification permission modal */
   function showNotificationModal() {
     if (!notificationPermissionAsked && "Notification" in window && Notification.permission === "default") {
@@ -653,6 +772,7 @@
         notificationPermissionAsked = true;
         notificationModal.style.display = 'none';
         hideLoadingScreen();
+        updateNotificationToggleUI();
         
         if (permission === "granted") {
           console.log("Notification permission granted");
@@ -663,10 +783,12 @@
         console.error("Notification permission error:", err);
         notificationModal.style.display = 'none';
         hideLoadingScreen();
+        updateNotificationToggleUI();
       });
     } else {
       notificationModal.style.display = 'none';
       hideLoadingScreen();
+      updateNotificationToggleUI();
     }
   }
   
@@ -734,6 +856,7 @@
     nameField.value = displayName;  
     bioField.value = displayBio;  
     profileAvatar.src = displayAvatar;  
+    updateNotificationToggleUI();
   }  
     
   /* helper: default svg avatar (data URL) */  
@@ -795,6 +918,16 @@
     hideLoadingScreen();
   });
   
+  // Notification toggle handler
+  notificationToggle.addEventListener('change', function() {
+    if (this.checked) {
+      requestNotificationPermission();
+    } else {
+      // Can't programmatically disable notifications, but update UI
+      updateNotificationToggleUI();
+    }
+  });
+  
   aboutBtn.onclick = () => { 
     aboutPage.classList.add('active'); 
   };
@@ -829,7 +962,11 @@
   });
     
   /* profile modal handlers */  
-  profileBtn.onclick = () => { profileModal.classList.add('open'); profileModal.setAttribute('aria-hidden','false'); refreshProfileUI(); };  
+  profileBtn.onclick = () => { 
+    profileModal.classList.add('open'); 
+    profileModal.setAttribute('aria-hidden','false'); 
+    refreshProfileUI(); 
+  };  
   closeProfile.onclick = ()=> { profileModal.classList.remove('open'); profileModal.setAttribute('aria-hidden','true'); };  
   profileModal.addEventListener('click', e => { if (e.target === profileModal) closeProfile.click(); });  
     
