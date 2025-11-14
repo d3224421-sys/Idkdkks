@@ -62,60 +62,6 @@
   header button { background:none; border:1px solid rgba(255,255,255,0.06); color:var(--muted); padding:6px 10px; border-radius:8px; font-size:13px; }
   header .header-buttons { display:flex; gap:8px; align-items:center; }
   
-  /* Notification button styles */
-  .notification-btn {
-    position: relative;
-    background: none;
-    border: 1px solid rgba(255,255,255,0.06);
-    color: var(--muted);
-    padding: 6px;
-    border-radius: 8px;
-    font-size: 16px;
-    cursor: pointer;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  
-  .notification-btn.enabled {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-  
-  .notification-btn.disabled {
-    color: var(--muted);
-    border-color: rgba(255,255,255,0.06);
-  }
-  
-  .notification-btn.blocked {
-    color: #ff6b6b;
-    border-color: #ff6b6b;
-  }
-  
-  .notification-tooltip {
-    position: absolute;
-    bottom: -30px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--panel);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 6px;
-    padding: 4px 8px;
-    font-size: 11px;
-    white-space: nowrap;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.2s, visibility 0.2s;
-    z-index: 100;
-  }
-  
-  .notification-btn:hover .notification-tooltip {
-    opacity: 1;
-    visibility: visible;
-  }
-  
   /* chat area */
   #chat-wrap { padding:68px 12px 84px; height:100%; overflow:auto; -webkit-overflow-scrolling:touch; }
   .msg-row { display:flex; gap:10px; align-items:flex-start; margin:8px 0; max-width:100%; }
@@ -475,11 +421,6 @@
       <h1>Global Chat</h1>
     </div>
     <div class="header-buttons">
-      <!-- Notification Button -->
-      <button id="notificationBtn" class="notification-btn" title="Enable notifications">
-        🔔
-        <div class="notification-tooltip">Enable notifications</div>
-      </button>
       <button id="aboutBtn" class="btn ghost">About</button>
       <button id="profileBtn" class="btn ghost">Profile</button>
     </div>
@@ -610,7 +551,6 @@
   const db = getDatabase(app);  
     
   /* UI refs */  
-  const notificationBtn = document.getElementById('notificationBtn');
   const loadingScreen = document.getElementById('loadingScreen');
   const chatWrap = document.getElementById('chat-wrap');  
   const messageInput = document.getElementById('messageInput');  
@@ -666,58 +606,37 @@
   
   // Owner ID - Replace "umhxfqwb87908" with "OWNER"
   const OWNER_ID = "umhxfqwb87908";
-    
-  /* Update notification button UI */
-  function updateNotificationButtonUI() {
-    if (!("Notification" in window)) {
-      notificationBtn.classList.add('blocked');
-      notificationBtn.querySelector('.notification-tooltip').textContent = 'Not supported';
-      return;
-    }
-
-    switch(Notification.permission) {
-      case "granted":
-        notificationBtn.classList.remove('disabled', 'blocked');
-        notificationBtn.classList.add('enabled');
-        notificationBtn.querySelector('.notification-tooltip').textContent = 'Notifications enabled';
-        break;
-      case "denied":
-        notificationBtn.classList.remove('enabled', 'disabled');
-        notificationBtn.classList.add('blocked');
-        notificationBtn.querySelector('.notification-tooltip').textContent = 'Notifications blocked';
-        break;
-      case "default":
-        notificationBtn.classList.remove('enabled', 'blocked');
-        notificationBtn.classList.add('disabled');
-        notificationBtn.querySelector('.notification-tooltip').textContent = 'Enable notifications';
-        break;
-    }
-  }
   
-  /* Request notification permission */
-  function requestNotificationPermission() {
-    if ("Notification" in window) {
-      Notification.requestPermission().then(permission => {
-        localStorage.setItem('gc_notification_asked', 'true');
-        notificationPermissionAsked = true;
-        updateNotificationButtonUI();
-        
-        if (permission === "granted") {
-          console.log("Notification permission granted");
-          // Show success message
-          showTemporaryMessage("🔔 Notifications enabled! You'll get notified for replies and new messages.");
+  /* Automatically request notification permission for new visitors */
+  function autoRequestNotificationPermission() {
+    // Only ask if:
+    // 1. Browser supports notifications
+    // 2. Permission hasn't been asked before
+    // 3. Permission is still "default" (not granted or denied)
+    if ("Notification" in window && 
+        !notificationPermissionAsked && 
+        Notification.permission === "default") {
+      
+      // Wait a bit for the page to load, then show the native browser permission
+      setTimeout(() => {
+        Notification.requestPermission().then(permission => {
+          localStorage.setItem('gc_notification_asked', 'true');
+          notificationPermissionAsked = true;
           
-          // Test notification
-          setTimeout(() => {
-            showNotification("Global Chat", "Notifications are now enabled! You'll get alerts for new messages and replies.");
-          }, 1000);
-        }
-      }).catch(err => {
-        console.error("Notification permission error:", err);
-        updateNotificationButtonUI();
-      });
-    } else {
-      updateNotificationButtonUI();
+          if (permission === "granted") {
+            console.log("Notification permission granted automatically");
+            // Show a subtle success message
+            showTemporaryMessage("🔔 Notifications enabled! You'll get notified for replies.");
+            
+            // Send a welcome notification
+            setTimeout(() => {
+              showNotification("Global Chat", "Welcome! You'll now get notifications for new messages and replies.");
+            }, 1000);
+          }
+        }).catch(err => {
+          console.error("Auto notification permission error:", err);
+        });
+      }, 2000); // Wait 2 seconds before asking
     }
   }
   
@@ -755,7 +674,6 @@
         requireInteraction: false
       };
       
-      // Close existing notification with same tag before showing new one
       try {
         const notification = new Notification(title, options);
         
@@ -837,25 +755,6 @@
   }  
     
   /* Event Listeners */
-  
-  // Notification button handler
-  notificationBtn.addEventListener('click', function() {
-    if (!("Notification" in window)) {
-      showTemporaryMessage("🔔 Notifications are not supported in your browser");
-      return;
-    }
-    
-    if (Notification.permission === "denied") {
-      showTemporaryMessage("🔔 Notifications are blocked. Please enable them in your browser settings.");
-      return;
-    }
-    
-    if (Notification.permission === "default") {
-      requestNotificationPermission();
-    } else {
-      showTemporaryMessage("🔔 Notifications are already enabled!");
-    }
-  });
   
   aboutBtn.onclick = () => { 
     aboutPage.classList.add('active'); 
@@ -1568,11 +1467,11 @@
     
   /* initialize — save local profile to DB if not present */  
   (async function init(){  
-    // Update notification button UI
-    updateNotificationButtonUI();
-    
-    // Hide loading screen immediately for new users (no notification popup)
+    // Hide loading screen immediately
     hideLoadingScreen();
+    
+    // Automatically request notification permission for new visitors
+    autoRequestNotificationPermission();
     
     // if local avatar exists but not saved in DB, write profile  
     try {  
