@@ -897,15 +897,15 @@
   
   /* render message element */  
   function renderMessage(m, messageId){  
-    // Don't render deleted messages
-    if (m.deleted) return;
-    
     // Check if message already exists
     const existingMessage = document.querySelector(`[data-message-id="${messageId}"]`);
     if (existingMessage) {
       existingMessage.remove();
     }
 
+    // Don't render deleted messages
+    if (m.deleted) return;
+    
     const row = document.createElement('div');  
     row.className = 'msg-row' + (m.uid === uid ? ' you' : '');  
     row.setAttribute('data-message-id', messageId);
@@ -1255,13 +1255,13 @@
     if (!newText.trim()) return;
     
     try {
-      // CORRECT Firebase syntax
-      const messageRef = ref(db, `messages/${messageId}`);
-      await update(messageRef, {
-        text: newText.trim(),
-        edited: true,
-        editTime: Date.now()
-      });
+      // Use the working syntax from old code
+      const updates = {};
+      updates['text'] = newText.trim();
+      updates['edited'] = true;
+      updates['editTime'] = Date.now();
+      
+      await update(ref(db, 'messages/' + messageId), updates);
       currentEditingMessageId = null;
     } catch(err) {
       console.error('Failed to update message:', err);
@@ -1283,19 +1283,18 @@
     }
   }
   
-  /* Delete message for everyone - FIXED VERSION */
+  /* Delete message for everyone - FIXED WITH WORKING SYNTAX */
   async function deleteMessageForEveryone(messageId) {
     try {
-      // CORRECT Firebase syntax - this should work now
-      const messageRef = ref(db, `messages/${messageId}`);
-      await update(messageRef, {
-        deleted: true,
-        text: '[This message was deleted]',
-        image: null,
-        isEmoji: false,
-        deleteTime: Date.now(),
-        deletedBy: uid
-      });
+      // Use the exact same syntax from your working old code
+      const updates = {};
+      updates['deleted'] = true;
+      updates['text'] = '[This message was deleted]';
+      updates['image'] = null;
+      updates['deleteTime'] = Date.now();
+      updates['deletedBy'] = uid;
+      
+      await update(ref(db, 'messages/' + messageId), updates);
       console.log('Message deleted for everyone:', messageId);
     } catch(err) {
       console.error('Failed to delete message for everyone:', err);
