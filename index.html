@@ -51,39 +51,6 @@
     to { transform: rotate(360deg); }
   }
   
-  /* Welcome modal for new users */
-  #welcomeModal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0,0,0,0.8);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-  }
-  
-  .welcome-card {
-    background: var(--panel);
-    border-radius: 16px;
-    padding: 24px;
-    max-width: 400px;
-    width: 90%;
-    text-align: center;
-    border: 1px solid rgba(255,255,255,0.1);
-  }
-  
-  .welcome-avatar {
-    width: 120px;
-    height: 120px;
-    border-radius: 12px;
-    margin: 0 auto 20px;
-    display: block;
-    border: 3px solid var(--accent);
-  }
-  
   /* fixed header */
   header {
     position:fixed; top:0; left:0; right:0; height:56px;
@@ -431,18 +398,6 @@
 </style>
 </head>
 <body>
-  <!-- Welcome Modal for New Users -->
-  <div id="welcomeModal">
-    <div class="welcome-card">
-      <img src="https://files.catbox.moe/jignnb.jpeg" class="welcome-avatar" alt="Welcome" />
-      <h2 style="color: var(--accent); margin-bottom: 10px;">Welcome to Global Chat! 🎉</h2>
-      <p style="color: var(--muted); margin-bottom: 20px; line-height: 1.5;">
-        Join the conversation! Set up your profile to start chatting with people around the world.
-      </p>
-      <button id="getStartedBtn" class="btn primary" style="width: 100%; padding: 12px;">Get Started</button>
-    </div>
-  </div>
-
   <!-- Loading Screen -->
   <div id="loadingScreen">
     <div class="loading-spinner"></div>
@@ -588,8 +543,6 @@
   const db = getDatabase(app);  
     
   /* UI refs */  
-  const welcomeModal = document.getElementById('welcomeModal');
-  const getStartedBtn = document.getElementById('getStartedBtn');
   const loadingScreen = document.getElementById('loadingScreen');
   const chatWrap = document.getElementById('chat-wrap');  
   const messageInput = document.getElementById('messageInput');  
@@ -623,15 +576,18 @@
     
   /* local identity */  
   let uid = localStorage.getItem('gc_uid');  
-  let isNewUser = !uid;
   if (!uid) { 
     uid = 'u' + Date.now().toString(36) + Math.floor(Math.random()*9000); 
     localStorage.setItem('gc_uid', uid); 
   }  
     
-  let displayName = localStorage.getItem('gc_name') || '';  
+  // Generate random name for new users
+  const randomNames = ['Shadow', 'Neon', 'Cyber', 'Phantom', 'Vector', 'Nova', 'Echo', 'Zenith', 'Orbit', 'Quantum', 'Pixel', 'Matrix'];
+  const randomName = randomNames[Math.floor(Math.random() * randomNames)] + Math.floor(Math.random() * 1000);
+  
+  let displayName = localStorage.getItem('gc_name') || randomName;  
   let displayBio = localStorage.getItem('gc_bio') || '';  
-  let displayAvatar = localStorage.getItem('gc_avatar') || ''; // base64 string  
+  let displayAvatar = localStorage.getItem('gc_avatar') || 'https://files.catbox.moe/jignnb.jpeg'; // Default avatar for new users
     
   /* Message actions state */
   let currentEditingMessageId = null;
@@ -665,20 +621,11 @@
     loadingScreen.classList.add('hidden');
   }
   
-  /* Show welcome modal for new users */
-  function showWelcomeModal() {
-    if (isNewUser && !displayName) {
-      welcomeModal.style.display = 'flex';
-    } else {
-      welcomeModal.style.display = 'none';
-    }
-  }
-  
   /* init UI with stored profile */  
   function refreshProfileUI(){  
     nameField.value = displayName;  
     bioField.value = displayBio;  
-    profileAvatar.src = displayAvatar || defaultAvatarSVG();  
+    profileAvatar.src = displayAvatar;  
   }  
     
   /* helper: default svg avatar (data URL) */  
@@ -731,11 +678,6 @@
   }  
     
   /* Event Listeners */
-  getStartedBtn.addEventListener('click', () => {
-    welcomeModal.style.display = 'none';
-    profileModal.classList.add('open');
-  });
-  
   aboutBtn.onclick = () => { 
     aboutPage.classList.add('active'); 
   };
@@ -794,7 +736,6 @@
     displayName = newName; displayBio = newBio;  
     await saveProfileToDB();  
     closeProfile.click();  
-    isNewUser = false;
   });  
     
   /* --- send message (text or with uploaded image) --- */  
@@ -985,7 +926,7 @@
     // avatar img  
     const avatarEl = document.createElement('img');  
     avatarEl.className = 'avatar-small';  
-    avatarEl.src = m.avatar || defaultAvatarSVG();  
+    avatarEl.src = m.avatar || 'https://files.catbox.moe/jignnb.jpeg';  
     avatarEl.addEventListener('click', ()=> openProfile(m.uid));  
     
     // bubble  
@@ -1392,13 +1333,13 @@
       const p = snap.exists() ? snap.val() : null;  
       // fallback local if your own and not saved in DB  
       if (!p && viewUid === uid) {  
-        viewAvatar.src = displayAvatar || defaultAvatarSVG();  
+        viewAvatar.src = displayAvatar || 'https://files.catbox.moe/jignnb.jpeg';  
         viewName.textContent = displayName;  
         viewBio.textContent = displayBio || '';  
         viewId.textContent = `id: ${viewUid}`;  
         viewModal.classList.add('open'); return;  
       }  
-      viewAvatar.src = (p && p.avatar) ? p.avatar : defaultAvatarSVG();  
+      viewAvatar.src = (p && p.avatar) ? p.avatar : 'https://files.catbox.moe/jignnb.jpeg';  
       viewName.textContent = (p && p.name) ? p.name : 'Unknown';  
       viewBio.textContent = (p && p.bio) ? p.bio : '';  
       viewId.textContent = `id: ${viewUid}`;  
@@ -1414,9 +1355,6 @@
   (async function init(){  
     // Request notification permission
     requestNotificationPermission();
-    
-    // Show welcome modal for new users
-    showWelcomeModal();
     
     // Hide loading screen after a delay
     setTimeout(() => {
