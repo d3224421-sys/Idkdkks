@@ -382,6 +382,80 @@
     z-index: 21;
   }
   
+  /* Link styles */
+  .chat-link {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px dotted var(--accent);
+    word-break: break-all;
+  }
+  
+  .chat-link:hover {
+    color: #4dabf7;
+    border-bottom: 1px solid #4dabf7;
+  }
+  
+  /* Link preview modal */
+  .link-preview-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    padding: 20px;
+  }
+  
+  .link-preview-card {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 20px;
+    max-width: 500px;
+    width: 100%;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  
+  .link-preview-title {
+    font-size: 18px;
+    margin-bottom: 12px;
+    color: var(--accent);
+  }
+  
+  .link-preview-url {
+    font-size: 14px;
+    color: var(--muted);
+    margin-bottom: 16px;
+    word-break: break-all;
+  }
+  
+  .link-preview-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+  
+  .link-preview-buttons button {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  
+  .link-preview-open {
+    background: var(--accent);
+    color: #012;
+  }
+  
+  .link-preview-cancel {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+  }
+  
   /* small screens */
   @media (max-width:420px){
     .avatar-small{width:36px;height:36px}
@@ -400,6 +474,9 @@
     }
     .header-buttons {
       gap: 6px;
+    }
+    .link-preview-card {
+      padding: 16px;
     }
   }
 </style>
@@ -455,6 +532,18 @@
       <img src="https://files.catbox.moe/9oxpbw.jpg" class="emoji-img" alt="Cry😭" />
       <span class="emoji-name">Cry😭</span>
     </button>
+  </div>
+
+  <!-- Link Preview Modal -->
+  <div id="linkPreviewModal" class="link-preview-modal" style="display: none;">
+    <div class="link-preview-card">
+      <h3 class="link-preview-title">Open Link</h3>
+      <p class="link-preview-url" id="previewUrl"></p>
+      <div class="link-preview-buttons">
+        <button id="cancelLink" class="link-preview-cancel">Cancel</button>
+        <button id="openLink" class="link-preview-open">Open Link</button>
+      </div>
+    </div>
   </div>
 
   <!-- About page -->
@@ -586,6 +675,12 @@
   const viewBio = document.getElementById('viewBio');  
   const viewId = document.getElementById('viewId');  
   const closeView = document.getElementById('closeView');  
+    
+  // Link preview elements
+  const linkPreviewModal = document.getElementById('linkPreviewModal');
+  const previewUrl = document.getElementById('previewUrl');
+  const cancelLink = document.getElementById('cancelLink');
+  const openLink = document.getElementById('openLink');
     
   /* local identity */  
   let uid = localStorage.getItem('gc_uid');  
@@ -793,6 +888,24 @@
       emojiPicker.classList.remove('show');
     });
   });
+  
+  /* Link preview handlers */
+  cancelLink.addEventListener('click', () => {
+    linkPreviewModal.style.display = 'none';
+  });
+  
+  openLink.addEventListener('click', () => {
+    const url = previewUrl.textContent;
+    window.open(url, '_blank', 'noopener,noreferrer');
+    linkPreviewModal.style.display = 'none';
+  });
+  
+  // Close link preview when clicking outside
+  linkPreviewModal.addEventListener('click', (e) => {
+    if (e.target === linkPreviewModal) {
+      linkPreviewModal.style.display = 'none';
+    }
+  });
     
   /* profile modal handlers */  
   profileBtn.onclick = () => { 
@@ -940,6 +1053,20 @@
     }
   });
   
+  /* URL detection and link creation */
+  function detectURLs(text) {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return text.replace(urlRegex, (url) => {
+      return `<a href="${url}" class="chat-link" target="_blank" rel="noopener noreferrer">${url}</a>`;
+    });
+  }
+  
+  /* Show link preview confirmation */
+  function showLinkPreview(url) {
+    previewUrl.textContent = url;
+    linkPreviewModal.style.display = 'flex';
+  }
+  
   /* render message element - FIXED EDIT POSITION (SAME AS OLD CODE) */  
   function renderMessage(m, messageId){  
     // Check if message already exists
@@ -1085,7 +1212,9 @@
         </div>
       `;
     } else {
-      messageContent = `<div class="text">${escapeHtml(m.text||'')} ${m.edited ? '<span style="font-size:11px;color:var(--muted);">(edited)</span>' : ''}</div>`;
+      // Convert URLs to clickable links
+      const textWithLinks = m.text ? detectURLs(escapeHtml(m.text)) : '';
+      messageContent = `<div class="text">${textWithLinks} ${m.edited ? '<span style="font-size:11px;color:var(--muted);">(edited)</span>' : ''}</div>`;
     }
     
     bubble.innerHTML = `
@@ -1115,6 +1244,15 @@
         });
       }
     }
+    
+    // Add click handlers for links to show preview
+    const links = bubble.querySelectorAll('.chat-link');
+    links.forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        showLinkPreview(link.href);
+      });
+    });
     
     // Add message actions menu for user's own messages
     if (m.uid === uid && !m.deleted && currentEditingMessageId !== messageId) {
@@ -1508,4 +1646,4 @@
   })();  
   </script>
 </body>
-    </html>
+        </html>
