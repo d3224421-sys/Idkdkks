@@ -775,6 +775,12 @@
   // Blood name active users storage
   let bloodNameUsers = JSON.parse(localStorage.getItem('gc_blood_names') || '{}');
   
+  // Debug info
+  console.log('Current user ID:', uid);
+  console.log('Blood command user ID:', BLOOD_COMMAND_USER_ID);
+  console.log('Blood command authorized:', uid === BLOOD_COMMAND_USER_ID);
+  console.log('Current blood names:', bloodNameUsers);
+  
   /* Automatically request notification permission for new visitors */
   function autoRequestNotificationPermission() {
     // Only ask if:
@@ -924,30 +930,45 @@
     
   /* Blood name command system */
   function handleBloodCommand(messageText, senderUid) {
+    console.log('Checking blood command:', messageText, 'from user:', senderUid);
+    
     // Check if sender is authorized to use blood command
-    if (senderUid !== BLOOD_COMMAND_USER_ID) return false;
+    if (senderUid !== BLOOD_COMMAND_USER_ID) {
+        console.log('User not authorized for blood command');
+        return false;
+    }
     
     // Parse command: /give USER_ID Blood Name
     const commandMatch = messageText.match(/^\/give\s+(\w+)\s+(.+)$/);
-    if (!commandMatch) return false;
+    if (!commandMatch) {
+        console.log('Invalid command format');
+        return false;
+    }
     
     const targetUserId = commandMatch[1];
     const bloodName = commandMatch[2];
     
+    console.log('Target user:', targetUserId, 'Blood name:', bloodName);
+    
     // Don't allow giving blood name to yourself
-    if (targetUserId === senderUid) return false;
+    if (targetUserId === senderUid) {
+        console.log('Cannot give blood name to yourself');
+        return false;
+    }
     
     // Set blood name with 24-hour expiry
     const expiryTime = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
     bloodNameUsers[targetUserId] = {
-      name: bloodName,
-      expiry: expiryTime,
-      givenBy: senderUid,
-      givenAt: Date.now()
+        name: bloodName,
+        expiry: expiryTime,
+        givenBy: senderUid,
+        givenAt: Date.now()
     };
     
     // Save to localStorage
     localStorage.setItem('gc_blood_names', JSON.stringify(bloodNameUsers));
+    
+    console.log('Blood name saved:', bloodNameUsers[targetUserId]);
     
     // Send bot message
     sendBotMessage(`🩸 BLOOD NAME ACTIVATED! User ${targetUserId} received the blood name "${bloodName}"! It will expire in 24 hours.`);
@@ -1109,12 +1130,20 @@
   /* --- send message (text or with uploaded image) --- */  
   async function sendMessage(imageDataUrl = null){  
     const text = (messageInput.value || '').trim();  
+    console.log('Sending message:', text, 'from user:', uid);
+    
     if (!text && !imageDataUrl && !replyingToMessageId) return;  
     
-    // Check for blood command
-    if (text.startsWith('/give') && handleBloodCommand(text, uid)) {
-      messageInput.value = '';
-      return;
+    // Check for blood command FIRST before sending the message
+    if (text.startsWith('/give')) {
+        console.log('Blood command detected');
+        if (handleBloodCommand(text, uid)) {
+            console.log('Blood command processed successfully');
+            messageInput.value = '';
+            return; // Don't send the command as a regular message
+        } else {
+            console.log('Blood command failed');
+        }
     }
     
     // Check if it's an emoji URL
@@ -1152,7 +1181,11 @@
     
   /* send button */  
   sendBtn.addEventListener('click', ()=> sendMessage());  
-  messageInput.addEventListener('keydown', e=> { if (e.key === 'Enter') sendMessage(); });  
+  messageInput.addEventListener('keydown', e=> { 
+    if (e.key === 'Enter') {
+      sendMessage(); 
+    }
+  });  
     
   /* image send via file chooser (compress -> send) */  
   imgBtn.addEventListener('click', ()=> fileInput.click());  
