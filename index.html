@@ -336,6 +336,28 @@
     object-fit: cover;
   }
   
+  /* Hold indicator */
+  .hold-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--accent);
+    color: #012;
+    padding: 8px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+    z-index: 5;
+  }
+  
+  .hold-indicator.show {
+    opacity: 1;
+  }
+  
   /* small screens */
   @media (max-width:420px){
     .avatar-small{width:36px;height:36px}
@@ -481,8 +503,7 @@
     update,
     remove,
     onChildChanged,
-    onChildRemoved,
-    onValue
+    onChildRemoved
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";  
     
   /* ---------- YOUR FIREBASE CONFIG ---------- */  
@@ -543,7 +564,6 @@
     
   /* Message actions state */
   let currentEditingMessageId = null;
-  let messageActionsMenu = null;
   let hasMessagesLoaded = false;
     
   /* Hide loading screen when messages start loading */
@@ -763,17 +783,7 @@
   function renderMessage(m, messageId){  
     // Check if message already exists
     const existingMessage = document.querySelector(`[data-message-id="${messageId}"]`);
-    if (existingMessage) {
-      // If we're editing this message, preserve the scroll position
-      if (currentEditingMessageId === messageId) {
-        const existingRect = existingMessage.getBoundingClientRect();
-        const chatRect = chatWrap.getBoundingClientRect();
-        const isVisible = existingRect.top >= chatRect.top && existingRect.bottom <= chatRect.bottom;
-        
-        if (!isVisible) {
-          existingMessage.scrollIntoView({ behavior: 'instant', block: 'center' });
-        }
-      }
+    if (existingMessage && currentEditingMessageId !== messageId) {
       existingMessage.remove();
     }
 
@@ -842,18 +852,38 @@
       `;
       bubble.appendChild(actionsMenu);
       
-      // Add click event for showing menu
-      bubble.addEventListener('click', (e) => {
-        // Don't show menu if clicking on links or other interactive elements
-        if (e.target.tagName === 'A' || e.target.classList.contains('name') || e.target.classList.contains('edit-input')) return;
-        
-        // Show menu on message click
-        showMessageActions(actionsMenu, messageId, m);
-      });
+      // Add HOLD gesture for showing menu (NOT CLICK)
+      let holdTimer;
+      let isHolding = false;
       
+      const startHold = (e) => {
+        // Don't trigger on name clicks or if already holding
+        if (e.target.classList.contains('name') || isHolding) return;
+        
+        holdTimer = setTimeout(() => {
+          isHolding = true;
+          showMessageActions(actionsMenu, messageId, m);
+        }, 500); // 500ms hold
+      };
+      
+      const endHold = () => {
+        clearTimeout(holdTimer);
+        isHolding = false;
+      };
+      
+      // Mouse events
+      bubble.addEventListener('mousedown', startHold);
+      bubble.addEventListener('mouseup', endHold);
+      bubble.addEventListener('mouseleave', endHold);
+      
+      // Touch events
+      bubble.addEventListener('touchstart', startHold);
+      bubble.addEventListener('touchend', endHold);
+      bubble.addEventListener('touchcancel', endHold);
+      
+      // Prevent context menu on hold
       bubble.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        showMessageActions(actionsMenu, messageId, m);
       });
     }
     
@@ -895,7 +925,13 @@
     
     row.appendChild(avatarEl);  
     row.appendChild(bubble);  
-    chatWrap.appendChild(row);  
+    
+    // If we're editing, replace the existing message, otherwise append new
+    if (currentEditingMessageId === messageId && existingMessage) {
+      existingMessage.parentNode.replaceChild(row, existingMessage);
+    } else {
+      chatWrap.appendChild(row);  
+    }
     
     // limit render length  
     while (chatWrap.children.length > 800) chatWrap.removeChild(chatWrap.firstChild);  
