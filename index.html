@@ -230,13 +230,7 @@
     color: #4dabf7;
   }
   
-  /* Edit message styles */
-  .edit-container {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  
+  /* Edit message input - SAME POSITION AS BEFORE */
   .edit-input {
     width: 100%;
     background: rgba(0,0,0,0.3);
@@ -245,14 +239,13 @@
     padding: 8px;
     color: #fff;
     font-size: 15px;
-    margin: 0;
-    font-family: inherit;
-    line-height: inherit;
+    margin-top: 6px;
   }
   
   .edit-buttons {
     display: flex;
     gap: 8px;
+    margin-top: 8px;
   }
   
   .edit-buttons button {
@@ -895,7 +888,7 @@
     }
   });
   
-  /* render message element */  
+  /* render message element - FIXED EDIT POSITION */  
   function renderMessage(m, messageId){  
     // Check if message already exists
     const existingMessage = document.querySelector(`[data-message-id="${messageId}"]`);
@@ -931,7 +924,7 @@
       contentHtml = `<img class="msg-img" src="${escapeHtml(m.image)}" alt="img">`;
     }
     
-    // Handle reply - FIXED: Show actual reply data and make it clickable
+    // Handle reply
     let replyHtml = '';
     if (m.replyTo && m.replyToName) {
       replyHtml = `<div class="reply-container" data-reply-to="${m.replyTo}">
@@ -940,17 +933,15 @@
       </div>`;
     }
     
-    // Check if this message is being edited
+    // Check if this message is being edited - FIXED: Same position as before
     let messageContent = '';
     if (currentEditingMessageId === messageId) {
-      // Show edit input
+      // Show edit input in the same position as before
       messageContent = `
-        <div class="edit-container">
-          <input type="text" class="edit-input" value="${escapeHtml(m.text||'')}" />
-          <div class="edit-buttons">
-            <button class="edit-save">Save</button>
-            <button class="edit-cancel">Cancel</button>
-          </div>
+        <input type="text" class="edit-input" value="${escapeHtml(m.text||'')}" />
+        <div class="edit-buttons">
+          <button class="edit-save">Save</button>
+          <button class="edit-cancel">Cancel</button>
         </div>
       `;
     } else {
@@ -1086,7 +1077,7 @@
     // name click -> open profile  
     bubble.querySelectorAll('.name').forEach(n => n.addEventListener('click', ()=> openProfile(n.dataset.uid)));  
     
-    // Edit button handlers if in edit mode (for new messages)
+    // Edit button handlers if in edit mode
     if (currentEditingMessageId === messageId) {
       const editInput = bubble.querySelector('.edit-input');
       const saveBtn = bubble.querySelector('.edit-save');
@@ -1112,11 +1103,8 @@
         }
       });
       
-      // Focus and select after a small delay to ensure the element is rendered
-      setTimeout(() => {
-        editInput.focus();
-        editInput.select();
-      }, 10);
+      editInput.focus();
+      editInput.select();
     }
     
     row.appendChild(avatarEl);  
@@ -1371,4 +1359,4 @@
   })();  
   </script>
 </body>
-  </html>
+        </html>
