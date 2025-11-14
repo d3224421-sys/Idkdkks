@@ -51,6 +51,39 @@
     to { transform: rotate(360deg); }
   }
   
+  /* Welcome modal for new users */
+  #welcomeModal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+  
+  .welcome-card {
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 24px;
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  
+  .welcome-avatar {
+    width: 120px;
+    height: 120px;
+    border-radius: 12px;
+    margin: 0 auto 20px;
+    display: block;
+    border: 3px solid var(--accent);
+  }
+  
   /* fixed header */
   header {
     position:fixed; top:0; left:0; right:0; height:56px;
@@ -197,7 +230,7 @@
     color: #4dabf7;
   }
   
-  /* Edit message styles - EXACT SAME POSITION */
+  /* Edit message styles */
   .edit-container {
     display: flex;
     flex-direction: column;
@@ -333,6 +366,11 @@
     padding: 6px 8px;
     margin-bottom: 6px;
     border-left: 2px solid var(--accent);
+    cursor: pointer;
+  }
+  
+  .reply-container:hover {
+    background: rgba(255,255,255,0.08);
   }
   
   .reply-author {
@@ -364,6 +402,15 @@
     z-index: 21;
   }
   
+  /* New user indicator */
+  .new-user-indicator {
+    text-align: center;
+    margin: 10px 0;
+    color: var(--muted);
+    font-style: italic;
+    font-size: 13px;
+  }
+  
   /* small screens */
   @media (max-width:420px){
     .avatar-small{width:36px;height:36px}
@@ -384,6 +431,18 @@
 </style>
 </head>
 <body>
+  <!-- Welcome Modal for New Users -->
+  <div id="welcomeModal">
+    <div class="welcome-card">
+      <img src="https://files.catbox.moe/jignnb.jpeg" class="welcome-avatar" alt="Welcome" />
+      <h2 style="color: var(--accent); margin-bottom: 10px;">Welcome to Global Chat! 🎉</h2>
+      <p style="color: var(--muted); margin-bottom: 20px; line-height: 1.5;">
+        Join the conversation! Set up your profile to start chatting with people around the world.
+      </p>
+      <button id="getStartedBtn" class="btn primary" style="width: 100%; padding: 12px;">Get Started</button>
+    </div>
+  </div>
+
   <!-- Loading Screen -->
   <div id="loadingScreen">
     <div class="loading-spinner"></div>
@@ -529,6 +588,8 @@
   const db = getDatabase(app);  
     
   /* UI refs */  
+  const welcomeModal = document.getElementById('welcomeModal');
+  const getStartedBtn = document.getElementById('getStartedBtn');
   const loadingScreen = document.getElementById('loadingScreen');
   const chatWrap = document.getElementById('chat-wrap');  
   const messageInput = document.getElementById('messageInput');  
@@ -562,19 +623,55 @@
     
   /* local identity */  
   let uid = localStorage.getItem('gc_uid');  
-  if (!uid) { uid = 'u' + Date.now().toString(36) + Math.floor(Math.random()*9000); localStorage.setItem('gc_uid', uid); }  
+  let isNewUser = !uid;
+  if (!uid) { 
+    uid = 'u' + Date.now().toString(36) + Math.floor(Math.random()*9000); 
+    localStorage.setItem('gc_uid', uid); 
+  }  
     
-  let displayName = localStorage.getItem('gc_name') || ('User' + Math.floor(Math.random()*9000));  
+  let displayName = localStorage.getItem('gc_name') || '';  
   let displayBio = localStorage.getItem('gc_bio') || '';  
   let displayAvatar = localStorage.getItem('gc_avatar') || ''; // base64 string  
     
   /* Message actions state */
   let currentEditingMessageId = null;
   let replyingToMessageId = null;
+  let repliedMessageData = null;
+  let lastMessageTime = 0;
     
-  /* Hide loading screen immediately */
+  /* Request notification permission */
+  function requestNotificationPermission() {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().then(permission => {
+        if (permission === "granted") {
+          console.log("Notification permission granted");
+        }
+      });
+    }
+  }
+  
+  /* Show notification */
+  function showNotification(title, body) {
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification(title, {
+        body: body,
+        icon: "https://files.catbox.moe/jignnb.jpeg"
+      });
+    }
+  }
+  
+  /* Hide loading screen */
   function hideLoadingScreen() {
     loadingScreen.classList.add('hidden');
+  }
+  
+  /* Show welcome modal for new users */
+  function showWelcomeModal() {
+    if (isNewUser && !displayName) {
+      welcomeModal.style.display = 'flex';
+    } else {
+      welcomeModal.style.display = 'none';
+    }
   }
   
   /* init UI with stored profile */  
@@ -633,7 +730,12 @@
     }  
   }  
     
-  /* About page handlers */
+  /* Event Listeners */
+  getStartedBtn.addEventListener('click', () => {
+    welcomeModal.style.display = 'none';
+    profileModal.classList.add('open');
+  });
+  
   aboutBtn.onclick = () => { 
     aboutPage.classList.add('active'); 
   };
@@ -692,6 +794,7 @@
     displayName = newName; displayBio = newBio;  
     await saveProfileToDB();  
     closeProfile.click();  
+    isNewUser = false;
   });  
     
   /* --- send message (text or with uploaded image) --- */  
@@ -713,12 +816,15 @@
       edited: false,
       deleted: false,
       isEmoji: !!isEmoji,
-      replyTo: replyingToMessageId || null
+      replyTo: replyingToMessageId || null,
+      replyToName: repliedMessageData?.name || null,
+      replyToText: repliedMessageData?.text || null
     };  
     try {  
       await push(ref(db, 'messages'), payload);  
       messageInput.value = '';  
       replyingToMessageId = null;
+      repliedMessageData = null;
       // Clear reply indicator if any
       const replyIndicator = document.querySelector('.reply-indicator');
       if (replyIndicator) replyIndicator.remove();
@@ -762,6 +868,14 @@
   onChildAdded(lastQ, snap => {  
     const m = snap.val();  
     if (!m) return;  
+    
+    // Show notification for new messages (except your own and if page is not focused)
+    if (m.uid !== uid && !document.hasFocus() && m.time > lastMessageTime) {
+      const messageText = m.isEmoji ? 'sent an emoji' : (m.text || 'sent an image');
+      showNotification(`${m.name}`, messageText);
+    }
+    lastMessageTime = Math.max(lastMessageTime, m.time);
+    
     hideLoadingScreen();
     renderMessage(m, snap.key);  
   });
@@ -781,77 +895,15 @@
     }
   });
   
-  /* render message element - FIXED EDIT POSITION */  
+  /* render message element */  
   function renderMessage(m, messageId){  
     // Don't render deleted messages
     if (m.deleted) return;
     
     // Check if message already exists
     const existingMessage = document.querySelector(`[data-message-id="${messageId}"]`);
-    
-    // If we're editing this message and it already exists, DON'T recreate it
-    if (currentEditingMessageId === messageId && existingMessage) {
-      // Just update the existing message content without moving it
-      const bubble = existingMessage.querySelector('.bubble');
-      const time = new Date(m.time || Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});  
-      const nameHtml = `<span class="name" data-uid="${escapeHtml(m.uid)}">${escapeHtml(m.name || 'User')}</span>`;  
-      
-      // Handle emoji messages
-      let contentHtml = '';
-      if (m.isEmoji && m.image) {
-        contentHtml = `<img class="msg-img" src="${escapeHtml(m.image)}" alt="emoji" style="max-width: 100px;">`;
-      } else if (m.image) {
-        contentHtml = `<img class="msg-img" src="${escapeHtml(m.image)}" alt="img">`;
-      }
-      
-      // Update the bubble content for edit mode
-      bubble.innerHTML = `
-        <div class="meta">
-          <div>${nameHtml}</div>
-          <div class="time">${time} ${m.edited ? '✏️' : ''}</div>
-        </div>
-        <div class="edit-container">
-          <input type="text" class="edit-input" value="${escapeHtml(m.text||'')}" />
-          <div class="edit-buttons">
-            <button class="edit-save">Save</button>
-            <button class="edit-cancel">Cancel</button>
-          </div>
-        </div>
-        ${contentHtml}
-      `;
-      
-      // Re-attach edit event handlers
-      const editInput = bubble.querySelector('.edit-input');
-      const saveBtn = bubble.querySelector('.edit-save');
-      const cancelBtn = bubble.querySelector('.edit-cancel');
-      
-      const saveEdit = () => {
-        updateMessage(messageId, editInput.value);
-      };
-      
-      const cancelEdit = () => {
-        currentEditingMessageId = null;
-        renderMessage(m, messageId); // Re-render without edit mode
-      };
-      
-      saveBtn.addEventListener('click', saveEdit);
-      cancelBtn.addEventListener('click', cancelEdit);
-      
-      editInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          saveEdit();
-        } else if (e.key === 'Escape') {
-          cancelEdit();
-        }
-      });
-      
-      // Focus and select after a small delay to ensure the element is rendered
-      setTimeout(() => {
-        editInput.focus();
-        editInput.select();
-      }, 10);
-      
-      return; // Stop here, don't create new element
+    if (existingMessage) {
+      existingMessage.remove();
     }
 
     const row = document.createElement('div');  
@@ -879,13 +931,12 @@
       contentHtml = `<img class="msg-img" src="${escapeHtml(m.image)}" alt="img">`;
     }
     
-    // Handle reply
+    // Handle reply - FIXED: Show actual reply data and make it clickable
     let replyHtml = '';
-    if (m.replyTo) {
-      // In a real app, you'd fetch the replied message here
-      replyHtml = `<div class="reply-container">
-        <div class="reply-author">Replying to ${m.replyToName || 'message'}</div>
-        <div class="reply-text">${m.replyToText || ''}</div>
+    if (m.replyTo && m.replyToName) {
+      replyHtml = `<div class="reply-container" data-reply-to="${m.replyTo}">
+        <div class="reply-author">Replying to ${escapeHtml(m.replyToName)}</div>
+        <div class="reply-text">${escapeHtml(m.replyToText || '')}</div>
       </div>`;
     }
     
@@ -915,6 +966,24 @@
       ${messageContent}
       ${contentHtml}
     `;
+    
+    // Add click handler for reply container to scroll to original message
+    if (m.replyTo) {
+      const replyContainer = bubble.querySelector('.reply-container');
+      if (replyContainer) {
+        replyContainer.addEventListener('click', () => {
+          const originalMessage = document.querySelector(`[data-message-id="${m.replyTo}"]`);
+          if (originalMessage) {
+            originalMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Add highlight effect
+            originalMessage.style.backgroundColor = 'rgba(29, 209, 161, 0.1)';
+            setTimeout(() => {
+              originalMessage.style.backgroundColor = '';
+            }, 2000);
+          }
+        });
+      }
+    }
     
     // Add message actions menu for user's own messages
     if (m.uid === uid && !m.deleted && currentEditingMessageId !== messageId) {
@@ -1052,21 +1121,11 @@
     
     row.appendChild(avatarEl);  
     row.appendChild(bubble);  
-    
-    // If message already exists, replace it (except when editing)
-    if (existingMessage && currentEditingMessageId !== messageId) {
-      existingMessage.parentNode.replaceChild(row, existingMessage);
-    } else if (!existingMessage) {
-      chatWrap.appendChild(row);  
-    }
+    chatWrap.appendChild(row);  
     
     // limit render length  
     while (chatWrap.children.length > 800) chatWrap.removeChild(chatWrap.firstChild);  
-    
-    // Only scroll to bottom if it's a new message, not when editing
-    if (currentEditingMessageId !== messageId && !existingMessage) {
-      chatWrap.scrollTop = chatWrap.scrollHeight;
-    }
+    chatWrap.scrollTop = chatWrap.scrollHeight;  
   }
   
   /* Show message actions menu */
@@ -1105,6 +1164,10 @@
       replyBtn.parentNode.replaceChild(newReplyBtn, replyBtn);
       newReplyBtn.addEventListener('click', () => {
         replyingToMessageId = messageId;
+        repliedMessageData = {
+          name: message.name,
+          text: message.text
+        };
         // Show reply indicator
         showReplyIndicator(message);
         menu.classList.remove('show');
@@ -1170,7 +1233,7 @@
     
     const text = message.isEmoji ? 'Emoji' : (message.text || 'Image');
     indicator.innerHTML = `
-      Replying to: ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}
+      Replying to ${message.name}: ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}
       <button style="float:right;background:none;border:none;color:var(--muted);cursor:pointer;">✕</button>
     `;
     
@@ -1180,6 +1243,7 @@
     indicator.querySelector('button').addEventListener('click', () => {
       indicator.remove();
       replyingToMessageId = null;
+      repliedMessageData = null;
     });
     
     // Auto focus input
@@ -1191,7 +1255,8 @@
     if (!newText.trim()) return;
     
     try {
-      const messageRef = ref(db, 'messages/' + messageId);
+      // CORRECT Firebase syntax
+      const messageRef = ref(db, `messages/${messageId}`);
       await update(messageRef, {
         text: newText.trim(),
         edited: true,
@@ -1221,10 +1286,8 @@
   /* Delete message for everyone - FIXED VERSION */
   async function deleteMessageForEveryone(messageId) {
     try {
-      // CORRECT Firebase syntax - create the reference first
-      const messageRef = ref(db, 'messages/' + messageId);
-      
-      // Use update with the correct syntax
+      // CORRECT Firebase syntax - this should work now
+      const messageRef = ref(db, `messages/${messageId}`);
       await update(messageRef, {
         deleted: true,
         text: '[This message was deleted]',
@@ -1233,7 +1296,6 @@
         deleteTime: Date.now(),
         deletedBy: uid
       });
-      
       console.log('Message deleted for everyone:', messageId);
     } catch(err) {
       console.error('Failed to delete message for everyone:', err);
@@ -1269,10 +1331,16 @@
     
   /* initialize — save local profile to DB if not present */  
   (async function init(){  
-    // Hide loading screen immediately - show chat right away
+    // Request notification permission
+    requestNotificationPermission();
+    
+    // Show welcome modal for new users
+    showWelcomeModal();
+    
+    // Hide loading screen after a delay
     setTimeout(() => {
       hideLoadingScreen();
-    }, 100);
+    }, 1000);
     
     // if local avatar exists but not saved in DB, write profile  
     try {  
