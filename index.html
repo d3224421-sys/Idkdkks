@@ -210,7 +210,7 @@
     color: #4dabf7;
   }
   
-  /* Edit message input - SAME POSITION AS BEFORE */
+  /* Edit message input */
   .edit-container {
     display: flex;
     flex-direction: column;
@@ -589,7 +589,6 @@
       <img src="https://files.catbox.moe/gvhwqz.jpeg" class="emoji-img" alt="EZ" />
       <span class="emoji-name">EZ</span>
     </button>
-    <!-- NEW EMOJI ADDED HERE -->
     <button class="emoji-item" data-emoji="https://files.catbox.moe/9oxpbw.jpg" data-name="Cry😭">
       <img src="https://files.catbox.moe/9oxpbw.jpg" class="emoji-img" alt="Cry😭" />
       <span class="emoji-name">Cry😭</span>
@@ -666,12 +665,6 @@
   <script type="module">
   /* ---------------------------  
     Firebase Realtime DB chat + profiles (base64 avatars)  
-    - stores avatars as compressed base64 in /profiles/<uid>/avatar  
-    - messages saved in /messages  
-    NOTE: For testing set DB rules public:  
-    {  
-      "rules": { ".read": true, ".write": true }  
-    }  
   ---------------------------- */  
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";  
   import { 
@@ -757,7 +750,7 @@
   
   let displayName = localStorage.getItem('gc_name') || randomName;  
   let displayBio = localStorage.getItem('gc_bio') || '';  
-  let displayAvatar = localStorage.getItem('gc_avatar') || 'https://files.catbox.moe/jignnb.jpeg'; // Default avatar for new users
+  let displayAvatar = localStorage.getItem('gc_avatar') || 'https://files.catbox.moe/jignnb.jpeg';
     
   /* Message actions state */
   let currentEditingMessageId = null;
@@ -766,7 +759,7 @@
   let lastMessageTime = 0;
   let notificationPermissionAsked = localStorage.getItem('gc_notification_asked') === 'true';
   
-  // Owner ID - Replace "umhxfqwb87908" with "OWNER"
+  // Owner ID
   const OWNER_ID = "umhxfqwb87908";
   
   // Blood name command user ID
@@ -774,24 +767,37 @@
   
   // Blood name active users storage
   let bloodNameUsers = JSON.parse(localStorage.getItem('gc_blood_names') || '{}');
-  
-  // Debug info
-  console.log('Current user ID:', uid);
-  console.log('Blood command user ID:', BLOOD_COMMAND_USER_ID);
-  console.log('Blood command authorized:', uid === BLOOD_COMMAND_USER_ID);
-  console.log('Current blood names:', bloodNameUsers);
+
+  // Debug functions
+  window.forceSetUserId = function(newUserId) {
+    uid = newUserId;
+    localStorage.setItem('gc_uid', uid);
+    console.log('🔄 FORCED USER ID CHANGE TO:', uid);
+    console.log('Now you are authorized?', uid === BLOOD_COMMAND_USER_ID);
+    location.reload();
+  };
+
+  window.debugBloodCommand = function() {
+    console.log('=== DEBUG COMMAND STATUS ===');
+    console.log('Current User ID:', uid);
+    console.log('Required User ID:', BLOOD_COMMAND_USER_ID);
+    console.log('Authorized:', uid === BLOOD_COMMAND_USER_ID);
+    console.log('Blood Names:', bloodNameUsers);
+    
+    if (uid === BLOOD_COMMAND_USER_ID) {
+      console.log('✅ YOU ARE AUTHORIZED! Commands should work.');
+    } else {
+      console.log('❌ YOU ARE NOT AUTHORIZED! You need to be user:', BLOOD_COMMAND_USER_ID);
+      console.log('💡 Try this in console: forceSetUserId("umhyqguft3765")');
+    }
+  };
   
   /* Automatically request notification permission for new visitors */
   function autoRequestNotificationPermission() {
-    // Only ask if:
-    // 1. Browser supports notifications
-    // 2. Permission hasn't been asked before
-    // 3. Permission is still "default" (not granted or denied)
     if ("Notification" in window && 
         !notificationPermissionAsked && 
         Notification.permission === "default") {
       
-      // Wait a bit for the page to load, then show the native browser permission
       setTimeout(() => {
         Notification.requestPermission().then(permission => {
           localStorage.setItem('gc_notification_asked', 'true');
@@ -799,10 +805,8 @@
           
           if (permission === "granted") {
             console.log("Notification permission granted automatically");
-            // Show a subtle success message
             showTemporaryMessage("🔔 Notifications enabled! You'll get notified for replies.");
             
-            // Send a welcome notification
             setTimeout(() => {
               showNotification("Global Chat", "Welcome! You'll now get notifications for new messages and replies.");
             }, 1000);
@@ -810,7 +814,7 @@
         }).catch(err => {
           console.error("Auto notification permission error:", err);
         });
-      }, 2000); // Wait 2 seconds before asking
+      }, 2000);
     }
   }
   
@@ -851,12 +855,10 @@
       try {
         const notification = new Notification(title, options);
         
-        // Auto close after 5 seconds
         setTimeout(() => {
           notification.close();
         }, 5000);
         
-        // Focus window when notification is clicked
         notification.onclick = () => {
           window.focus();
           notification.close();
@@ -930,36 +932,38 @@
     
   /* Blood name command system */
   function handleBloodCommand(messageText, senderUid) {
-    console.log('Checking blood command:', messageText, 'from user:', senderUid);
+    console.log('🔍 Checking blood command:', messageText, 'from user:', senderUid);
     
     // Check if sender is authorized to use blood command
     if (senderUid !== BLOOD_COMMAND_USER_ID) {
-        console.log('User not authorized for blood command');
+        console.log('❌ User not authorized for blood command. Required:', BLOOD_COMMAND_USER_ID, 'Got:', senderUid);
+        sendBotMessage(`❌ Only user ${BLOOD_COMMAND_USER_ID} can use blood commands.`);
         return false;
     }
     
-    // Parse command: /give USER_ID Blood Name
-    const commandMatch = messageText.match(/^\/give\s+(\w+)\s+(.+)$/);
+    // Parse command: /give USER_ID BloodName
+    const commandMatch = messageText.match(/^\/give\s+(\w+)\s+BloodName$/);
     if (!commandMatch) {
-        console.log('Invalid command format');
+        console.log('❌ Invalid command format. Use: /give USER_ID BloodName');
+        sendBotMessage('❌ Invalid command format. Use: /give USER_ID BloodName');
         return false;
     }
     
     const targetUserId = commandMatch[1];
-    const bloodName = commandMatch[2];
     
-    console.log('Target user:', targetUserId, 'Blood name:', bloodName);
+    console.log('🎯 Target user:', targetUserId);
     
     // Don't allow giving blood name to yourself
     if (targetUserId === senderUid) {
-        console.log('Cannot give blood name to yourself');
+        console.log('❌ Cannot give blood name to yourself');
+        sendBotMessage('❌ You cannot give a blood name to yourself!');
         return false;
     }
     
-    // Set blood name with 24-hour expiry
+    // Set blood name with 24-hour expiry - ALWAYS "BloodName"
     const expiryTime = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
     bloodNameUsers[targetUserId] = {
-        name: bloodName,
+        name: "BloodName", // ALWAYS "BloodName"
         expiry: expiryTime,
         givenBy: senderUid,
         givenAt: Date.now()
@@ -968,13 +972,14 @@
     // Save to localStorage
     localStorage.setItem('gc_blood_names', JSON.stringify(bloodNameUsers));
     
-    console.log('Blood name saved:', bloodNameUsers[targetUserId]);
+    console.log('✅ Blood name saved:', bloodNameUsers[targetUserId]);
     
-    // Send bot message
-    sendBotMessage(`🩸 BLOOD NAME ACTIVATED! User ${targetUserId} received the blood name "${bloodName}"! It will expire in 24 hours.`);
-    
-    // Send notification message
+    // Send bot messages
+    sendBotMessage(`🩸 BLOOD NAME ACTIVATED! User ${targetUserId} received the BloodName! It will expire in 24 hours.`);
     sendBotMessage(`⏰ YOUR BLOOD COLOUR NAME WILL FINISH AT 24 HOUR START NOW!`);
+    
+    // Show success message to user
+    showTemporaryMessage(`✅ BloodName given to ${targetUserId}!`);
     
     return true;
   }
@@ -1130,19 +1135,20 @@
   /* --- send message (text or with uploaded image) --- */  
   async function sendMessage(imageDataUrl = null){  
     const text = (messageInput.value || '').trim();  
-    console.log('Sending message:', text, 'from user:', uid);
+    console.log('📤 Sending message:', text, 'from user:', uid);
     
     if (!text && !imageDataUrl && !replyingToMessageId) return;  
     
     // Check for blood command FIRST before sending the message
     if (text.startsWith('/give')) {
-        console.log('Blood command detected');
+        console.log('🩸 Blood command detected');
         if (handleBloodCommand(text, uid)) {
-            console.log('Blood command processed successfully');
+            console.log('✅ Blood command processed successfully - NOT sending as regular message');
             messageInput.value = '';
             return; // Don't send the command as a regular message
         } else {
-            console.log('Blood command failed');
+            console.log('❌ Blood command failed - sending as regular message');
+            // Continue to send as regular message if command failed
         }
     }
     
@@ -1274,7 +1280,7 @@
     linkPreviewModal.style.display = 'flex';
   }
   
-  /* render message element - FIXED EDIT POSITION (SAME AS OLD CODE) */  
+  /* render message element */  
   function renderMessage(m, messageId){  
     // Check if message already exists
     const existingMessage = document.querySelector(`[data-message-id="${messageId}"]`);
@@ -1310,7 +1316,7 @@
         </div>`;
       }
       
-      // Update the bubble content for edit mode - SAME POSITION AS OLD CODE
+      // Update the bubble content for edit mode
       bubble.innerHTML = `
         <div class="meta">
           <div>${nameHtml}</div>
@@ -1338,7 +1344,7 @@
       
       const cancelEdit = () => {
         currentEditingMessageId = null;
-        renderMessage(m, messageId); // Re-render without edit mode
+        renderMessage(m, messageId);
       };
       
       saveBtn.addEventListener('click', saveEdit);
@@ -1358,7 +1364,7 @@
         editInput.select();
       }, 10);
       
-      return; // Stop here, don't create new element
+      return;
     }
 
     // Don't render deleted messages
@@ -1415,10 +1421,10 @@
       </div>`;
     }
     
-    // Check if this message is being edited - FIXED: Same position as old code
+    // Check if this message is being edited
     let messageContent = '';
     if (currentEditingMessageId === messageId) {
-      // Show edit input in the same position as old code
+      // Show edit input
       messageContent = `
         <div class="edit-container">
           <input type="text" class="edit-input" value="${escapeHtml(m.text||'')}" />
@@ -1586,7 +1592,7 @@
       
       const cancelEdit = () => {
         currentEditingMessageId = null;
-        renderMessage(m, messageId); // Re-render without edit mode
+        renderMessage(m, messageId);
       };
       
       saveBtn.addEventListener('click', saveEdit);
